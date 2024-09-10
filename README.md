@@ -1,4 +1,4 @@
-# Assignment Portal
+# University Assignment Portal
 
 ## Overview
 
