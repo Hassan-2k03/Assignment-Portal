@@ -74,5 +74,3 @@ CREATE TABLE Enrollment (
     FOREIGN KEY (StudentID) REFERENCES User(UserID),
     FOREIGN KEY (CourseID) REFERENCES Course(CourseID)
 );
-
-
