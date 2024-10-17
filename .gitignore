@@ -1,3 +1,5 @@
 /DBMS
 /SE
 /.venv
+/.vscode
+/__pycache__
