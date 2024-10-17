@@ -1,5 +1,7 @@
 from flask import Flask
 import mysql.connector
+from routes import app
+
 from config import DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME
 
 app = Flask(__name__)
