@@ -83,3 +83,37 @@ content-type: application/json
     "year": 2024,
     "semester": 1
 }
+
+###
+
+# Create a new assignment (missing fields - failure case)
+POST http://127.0.0.1:5000/courses/1/assignments HTTP/1.1  # Assuming course_id is 1
+content-type: application/json
+
+{
+    "title": "Assignment 2",
+    "description": "This is the second assignment.",
+    "due_date": "2024-10-25 23:59:59"
+}
+
+###
+
+# Create a new assignment (invalid due_date format - failure case)
+POST http://127.0.0.1:5000/courses/1/assignments HTTP/1.1
+content-type: application/json
+
+{
+    "title": "Assignment 2",
+    "description": "This assignment has an invalid due date.",
+    "due_date": "2024/10/26"  # Incorrect format
+}
+
+###
+
+# Create a new assignment (unauthorized - student tries to create an assignment)
+# ... (Use the previously registered student account and try to create an assignment)
+GET http://127.0.0.1:5000/logout HTTP/1.1
+
+
+#logout 
+GET http://127.0.0.1:5000/logout HTTP/1.1

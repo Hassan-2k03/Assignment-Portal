@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 import mysql.connector
 from config import SECRET_KEY, DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME
+import datetime
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY  # Set a strong secret key!
@@ -112,6 +113,43 @@ def create_course():
     except mysql.connector.Error as err:
         print(f"Error creating course: {err}")
         return jsonify({'message': 'Failed to create course'}), 500
+
+@app.route('/courses/<int:course_id>/assignments', methods=['POST'])
+def create_assignment(course_id):
+    if 'user_id' not in session:
+        return jsonify({'message': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    title = data.get('title')
+    description = data.get('description')
+    due_date_str = data.get('due_date')  # Get due_date as a string
+
+    # Data validation
+    if not all([title, due_date_str]):
+        return jsonify({'message': 'Missing required fields'}), 400
+
+    # Parse the due_date string into a datetime object (compatible with MySQL DATETIME)
+    try:
+        due_date = datetime.datetime.strptime(due_date_str, '%Y-%m-%d %H:%M:%S')  # Example format: '2024-12-31 23:59:59'
+    except ValueError:
+        return jsonify({'message': 'Invalid due_date format. Please use YYYY-MM-DD HH:MM:SS'}), 400
+
+    # Get the role of the logged-in user
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT Role FROM User WHERE UserID = %s", (session['user_id'],))
+        user = cursor.fetchone()
+        if user and user['Role'] == 'professor':
+            # Only allow professors to create assignments
+            cursor.execute("INSERT INTO Assignment (CourseID, Title, Description, DueDate) VALUES (%s, %s, %s, %s)",
+                           (course_id, title, description, due_date))  # Use the parsed due_date object
+            mydb.commit()
+            return jsonify({'message': 'Assignment created successfully'}), 201
+        else:
+            return jsonify({'message': 'Only professors can create assignments'}), 403  # Forbidden
+    except mysql.connector.Error as err:
+        print(f"Error creating assignment: {err}")
+        return jsonify({'message': 'Failed to create assignment'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True) 
