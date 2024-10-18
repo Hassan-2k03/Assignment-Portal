@@ -6,7 +6,7 @@ from config import SECRET_KEY, DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD, 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY  # Set a strong secret key!
 
-# Database connection (you might move this to a separate file later)
+# Database connection (move this to a separate file later)
 mydb = mysql.connector.connect(
     host=DATABASE_HOST,
     user=DATABASE_USER,
@@ -18,6 +18,7 @@ mydb = mysql.connector.connect(
 def register():
     print(request.url) 
     data = request.get_json()
+    print(data)
     username = data.get('username')
     password = data.get('password')
 

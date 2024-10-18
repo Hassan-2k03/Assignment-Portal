@@ -1,10 +1,7 @@
-from flask import Flask
 import mysql.connector
-from routes import app
+import routes  # Import the routes module
 
 from config import DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME
-
-app = Flask(__name__)
 
 try:
     mydb = mysql.connector.connect(
@@ -24,6 +21,8 @@ try:
 
 except mysql.connector.Error as err:
     print(f"Database connection failed: {err}")
+
+app = routes.app  # Get the app instance from routes.py
 
 if __name__ == '__main__':
     app.run(debug=True)
