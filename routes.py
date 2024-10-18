@@ -76,5 +76,42 @@ def logout():
     session.pop('user_id', None)
     return jsonify({'message': 'Logged out'}), 200
 
+@app.route('/courses', methods=['POST'])
+def create_course():
+    if 'user_id' not in session:
+        return jsonify({'message': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    course_name = data.get('course_name')
+    course_code = data.get('course_code')
+    year = data.get('year')
+    semester = data.get('semester')
+
+    # Data validation
+    if not all([course_name, course_code, year, semester]):
+        return jsonify({'message': 'Missing required fields'}), 400
+
+    # Get the role of the logged-in user
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT Role FROM User WHERE UserID = %s", (session['user_id'],))
+        user = cursor.fetchone()
+        if user and user['Role'] == 'professor':
+            # Only allow professors to create courses
+            instructor_id = session['user_id']
+            cursor.execute("INSERT INTO Course (CourseName, CourseCode, InstructorID, Year, Semester) VALUES (%s, %s, %s, %s, %s)",
+                           (course_name, course_code, instructor_id, year, semester))
+            mydb.commit()
+
+            # Get the newly created course ID
+            course_id = cursor.lastrowid  # This gets the ID of the last inserted row
+
+            return jsonify({'message': 'Course created successfully', 'course_id': course_id}), 201
+        else:
+            return jsonify({'message': 'Only professors can create courses'}), 403  # Forbidden
+    except mysql.connector.Error as err:
+        print(f"Error creating course: {err}")
+        return jsonify({'message': 'Failed to create course'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True) 

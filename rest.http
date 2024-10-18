@@ -1,32 +1,85 @@
-# Register a new user
+# Register a new professor
 POST http://127.0.0.1:5000/register HTTP/1.1
 content-type: application/json
 
 {
-    "username": "testuser123",
+    "username": "prof123",
     "password": "testpassword",
-    "first_name": "Test",
-    "last_name": "User",
-    "email": "test@example.com",
-    "role": "student"
-
+    "first_name": "Professor",
+    "last_name": "Test",
+    "email": "prof@example.com",
+    "role": "professor"
 }
-
- 
- 
 
 ###
 
-# Login with the new user
+# Login as the professor
 POST http://127.0.0.1:5000/login HTTP/1.1
 content-type: application/json
 
 {
-    "username": "testuser123",
+    "username": "prof123",
     "password": "testpassword"
 }
 
 ###
 
-# Logout
-GET http://127.0.0.1:5000/logout HTTP/1.1
+# Create a new course (successful case)
+POST http://127.0.0.1:5000/courses HTTP/1.1
+content-type: application/json
+
+{
+    "course_name": "Introduction to Programming",
+    "course_code": "CS101",
+    "year": 2024,
+    "semester": 1
+}
+
+###
+
+# Create a new course (missing fields - failure case)
+POST http://127.0.0.1:5000/courses HTTP/1.1
+content-type: application/json
+
+{
+    "course_name": "Data Structures and Algorithms"
+}
+
+###
+
+# Create a new course (unauthorized - student tries to create a course)
+POST http://127.0.0.1:5000/register HTTP/1.1
+content-type: application/json
+
+{
+    "username": "student123",
+    "password": "testpassword",
+    "first_name": "Student",
+    "last_name": "Test",
+    "email": "student@example.com",
+    "role": "student"
+}
+
+###
+
+# Login as the student
+POST http://127.0.0.1:5000/login HTTP/1.1
+content-type: application/json
+
+{
+    "username": "student123",
+    "password": "testpassword"
+}
+
+###
+
+# Try to create a course as a student
+POST http://127.0.0.1:5000/courses HTTP/1.1
+content-type: application/json
+
+{
+    "course_name": "Calculus",
+    "course_code": "MA101",
+    "year": 2024,
+    "semester": 1
+}
