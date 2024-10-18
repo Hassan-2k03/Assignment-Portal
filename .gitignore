@@ -4,4 +4,4 @@
 /.vscode
 /__pycache__
 config.py
-.http
+*.http
