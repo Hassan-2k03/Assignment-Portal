@@ -56,13 +56,16 @@ CREATE TABLE Has (
     FOREIGN KEY (AnnouncementID) REFERENCES Announcement(AnnouncementID)  -- Assuming you have an Announcement table
 );
 
--- Submission table
+-- Modify Submission table to fix the column names and add necessary fields
+DROP TABLE IF EXISTS Submission;
 CREATE TABLE Submission (
     SubmissionID INT AUTO_INCREMENT PRIMARY KEY,
     AssignmentID INT NOT NULL,
     StudentID INT NOT NULL,
-    SubmissionDate DATETIME,
-    SubmittedFiles VARCHAR(255),  -- Can be a comma-separated list of file paths or a JSON array
+    SubmissionDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    SubmissionPath VARCHAR(255) NOT NULL,  -- Added this field
+    FileType VARCHAR(10),
+    FileSize INT,
     Feedback TEXT,
     Grade VARCHAR(5),
     FOREIGN KEY (AssignmentID) REFERENCES Assignment(AssignmentID),
@@ -86,5 +89,15 @@ CREATE TABLE Notification (
     Timestamp DATETIME,
     Status ENUM('read', 'unread') DEFAULT 'unread',
     FOREIGN KEY (UserID) REFERENCES User(UserID)
+);
+
+-- Course Material table
+CREATE TABLE IF NOT EXISTS CourseMaterial (
+    MaterialID INT AUTO_INCREMENT PRIMARY KEY,
+    CourseID INT NOT NULL,
+    FilePath VARCHAR(255) NOT NULL,
+    Description TEXT,
+    UploadDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (CourseID) REFERENCES Course(CourseID) ON DELETE CASCADE
 );
 
