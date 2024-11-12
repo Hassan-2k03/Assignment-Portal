@@ -1,1 +1,3 @@
-assignment submissions are done by professors (triggers)
+assignment submissions are done by professors (triggers) and reverse also.
+
+notification table assignment deadline triggers
