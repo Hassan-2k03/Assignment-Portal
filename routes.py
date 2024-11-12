@@ -248,4 +248,30 @@ def upload_course_material(course_id):
             try:
                 # Record the material in database
                 cursor.execute("""
+                    INSERT INTO CourseMaterial (CourseID, FilePath, Description, UploadDate)
+                    VALUES (%s, %s, %s, NOW())
+                """, (course_id, file_path, description))
+                mydb.commit()
+                return jsonify({'message': 'Material uploaded successfully'}), 201
+            except mysql.connector.Error as err:
+                if err.errno == 1644:  # Custom error from trigger
+                    return jsonify({'message': str(err)}), 403
+                print(f"Error recording material: {err}")
+                return jsonify({'message': 'Failed to record material'}), 500
+
+        return jsonify({'message': 'File type not allowed'}), 400
+
+    except mysql.connector.Error as err:
+        if err.errno == 1644:  # Custom error from trigger
+            return jsonify({'message': str(err)}), 403
+        print(f"Error uploading material: {err}")
+        return jsonify({'message': 'Failed to upload material'}), 500
+
+@app.route('/download/<path:filename>')
+def download_file(filename):
+    if 'user_id' not in session:
+        return jsonify({'message': 'Unauthorized'}), 401
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
+if __name__ == '__main__':
     app.run(debug=True)
