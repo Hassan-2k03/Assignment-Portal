@@ -164,88 +164,88 @@ def submit_assignment(assignment_id):
     if 'user_id' not in session:
         return jsonify({'message': 'Unauthorized'}), 401
 
-    if 'file' not in request.files:
-        return jsonify({'message': 'No file part'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'message': 'No selected file'}), 400
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # First verify if user is a student
+        cursor.execute("SELECT Role FROM User WHERE UserID = %s", (session['user_id'],))
+        user = cursor.fetchone()
+        if user['Role'] != 'student':
+            return jsonify({'message': 'Only students can submit assignments'}), 403
 
-    if file and allowed_file(file.filename):
-        # Create submission directory if it doesn't exist
-        submission_dir = os.path.join(app.config['UPLOAD_FOLDER'], f'assignment_{assignment_id}')
-        os.makedirs(submission_dir, exist_ok=True)
+        # Rest of the submission logic
+        if 'file' not in request.files:
+            return jsonify({'message': 'No file part'}), 400
         
-        # Secure filename and save file
-        filename = secure_filename(f"{session['user_id']}_{file.filename}")
-        file_path = os.path.join(submission_dir, filename)
-        file.save(file_path)
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'message': 'No selected file'}), 400
 
-        cursor = mydb.cursor(dictionary=True)
-        try:
-            # Record the submission in database
-            cursor.execute("""
-                INSERT INTO Submission (AssignmentID, StudentID, SubmissionPath, SubmissionDate)
-                VALUES (%s, %s, %s, NOW())
-            """, (assignment_id, session['user_id'], file_path))
-            mydb.commit()
-            return jsonify({'message': 'Assignment submitted successfully'}), 201
-        except mysql.connector.Error as err:
-            print(f"Error recording submission: {err}")
-            return jsonify({'message': 'Failed to record submission'}), 500
+        if file and allowed_file(file.filename):
+            # Create submission directory if it doesn't exist
+            submission_dir = os.path.join(app.config['UPLOAD_FOLDER'], f'assignment_{assignment_id}')
+            os.makedirs(submission_dir, exist_ok=True)
+            
+            # Secure filename and save file
+            filename = secure_filename(f"{session['user_id']}_{file.filename}")
+            file_path = os.path.join(submission_dir, filename)
+            file.save(file_path)
 
-    return jsonify({'message': 'File type not allowed'}), 400
+            cursor = mydb.cursor(dictionary=True)
+            try:
+                # Record the submission in database
+                cursor.execute("""
+                    INSERT INTO Submission (AssignmentID, StudentID, SubmissionPath, SubmissionDate)
+                    VALUES (%s, %s, %s, NOW())
+                """, (assignment_id, session['user_id'], file_path))
+                mydb.commit()
+                return jsonify({'message': 'Assignment submitted successfully'}), 201
+            except mysql.connector.Error as err:
+                if err.errno == 1644:  # Custom error from trigger
+                    return jsonify({'message': str(err)}), 403
+                print(f"Error recording submission: {err}")
+                return jsonify({'message': 'Failed to record submission'}), 500
+
+        return jsonify({'message': 'File type not allowed'}), 400
+
+    except mysql.connector.Error as err:
+        if err.errno == 1644:  # Custom error from trigger
+            return jsonify({'message': str(err)}), 403
+        print(f"Error submitting assignment: {err}")
+        return jsonify({'message': 'Failed to submit assignment'}), 500
 
 @app.route('/courses/<int:course_id>/materials', methods=['POST'])
 def upload_course_material(course_id):
     if 'user_id' not in session:
         return jsonify({'message': 'Unauthorized'}), 401
 
-    # Verify user is the course instructor
     cursor = mydb.cursor(dictionary=True)
-    cursor.execute("SELECT InstructorID FROM Course WHERE CourseID = %s", (course_id,))
-    course = cursor.fetchone()
-    
-    if not course or course['InstructorID'] != session['user_id']:
-        return jsonify({'message': 'Unauthorized'}), 403
+    try:
+        # First verify if user is a professor
+        cursor.execute("SELECT Role FROM User WHERE UserID = %s", (session['user_id'],))
+        user = cursor.fetchone()
+        if user['Role'] != 'professor':
+            return jsonify({'message': 'Only professors can upload course materials'}), 403
 
-    if 'file' not in request.files:
-        return jsonify({'message': 'No file part'}), 400
-    
-    file = request.files['file']
-    description = request.form.get('description', '')
-
-    if file.filename == '':
-        return jsonify({'message': 'No selected file'}), 400
-
-    if file and allowed_file(file.filename):
-        # Create materials directory if it doesn't exist
-        materials_dir = os.path.join(app.config['UPLOAD_FOLDER'], f'course_{course_id}')
-        os.makedirs(materials_dir, exist_ok=True)
+        # Rest of the upload logic
+        if 'file' not in request.files:
+            return jsonify({'message': 'No file part'}), 400
         
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(materials_dir, filename)
-        file.save(file_path)
+        file = request.files['file']
+        description = request.form.get('description', '')
 
-        try:
-            # Record the material in database
-            cursor.execute("""
-                INSERT INTO CourseMaterial (CourseID, FilePath, Description, UploadDate)
-                VALUES (%s, %s, %s, NOW())
-            """, (course_id, file_path, description))
-            mydb.commit()
-            return jsonify({'message': 'Material uploaded successfully'}), 201
-        except mysql.connector.Error as err:
-            print(f"Error recording material: {err}")
-            return jsonify({'message': 'Failed to record material'}), 500
+        if file.filename == '':
+            return jsonify({'message': 'No selected file'}), 400
 
-    return jsonify({'message': 'File type not allowed'}), 400
+        if file and allowed_file(file.filename):
+            # Create materials directory if it doesn't exist
+            materials_dir = os.path.join(app.config['UPLOAD_FOLDER'], f'course_{course_id}')
+            os.makedirs(materials_dir, exist_ok=True)
+            
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(materials_dir, filename)
+            file.save(file_path)
 
-@app.route('/download/<path:filename>')
-def download_file(filename):
-    if 'user_id' not in session:
-        return jsonify({'message': 'Unauthorized'}), 401
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
-
-if __name__ == '__main__':
+            try:
+                # Record the material in database
+                cursor.execute("""
     app.run(debug=True)
