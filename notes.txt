@@ -1,3 +1,18 @@
 assignment submissions are done by professors (triggers) and reverse also.
 
 notification table assignment deadline triggers
+
+
+points to keep in mind 
+
+1. ER Diagram 
+2. Relational Schema
+3. 3nf maintain 
+
+4. Triggers, procedures and functions should be there
+5. CRUD Operations
+6. Nested, join, and aggrigate queries.
+
+
+
+1.login route redirect to student and professor page
