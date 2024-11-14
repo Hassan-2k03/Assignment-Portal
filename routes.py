@@ -210,7 +210,58 @@ def admin_create_course():
 @login_required
 def approve_enrollment(request_id):
     """Process student enrollment requests."""
-    # ...existing approve_enrollment code...
+    if session.get('role') != 'admin':
+        return jsonify({'message': 'Only admins can approve enrollments'}), 403
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # First get the enrollment request details
+        cursor.execute("""
+            SELECT StudentID, CourseID, Status 
+            FROM EnrollmentRequest 
+            WHERE RequestID = %s
+        """, (request_id,))
+        
+        request = cursor.fetchone()
+        if not request:
+            return jsonify({'message': 'Enrollment request not found'}), 404
+            
+        if request['Status'] != 'pending':
+            return jsonify({'message': 'Request has already been processed'}), 400
+
+        # Start transaction
+        cursor.execute("START TRANSACTION")
+        
+        # Update request status to approved
+        cursor.execute("""
+            UPDATE EnrollmentRequest 
+            SET Status = 'approved', ProcessedDate = NOW() 
+            WHERE RequestID = %s
+        """, (request_id,))
+
+        # Create new enrollment
+        cursor.execute("""
+            INSERT INTO Enrollment (StudentID, CourseID, EnrollmentDate)
+            VALUES (%s, %s, NOW())
+        """, (request['StudentID'], request['CourseID']))
+
+        # Create notification for student
+        cursor.execute("""
+            INSERT INTO Notification (UserID, Message, Timestamp)
+            SELECT %s, 
+                   CONCAT('Your enrollment request for course ', c.CourseName, ' has been approved'),
+                   NOW()
+            FROM Course c
+            WHERE c.CourseID = %s
+        """, (request['StudentID'], request['CourseID']))
+
+        cursor.execute("COMMIT")
+        return jsonify({'message': 'Enrollment request approved successfully'}), 200
+
+    except mysql.connector.Error as err:
+        cursor.execute("ROLLBACK")
+        print(f"Error processing enrollment: {err}")
+        return jsonify({'message': 'Failed to process enrollment request'}), 500
 
 # ============ Professor Routes ============
 @app.route('/professor-dashboard')
