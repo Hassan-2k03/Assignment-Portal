@@ -12,7 +12,3 @@ points to keep in mind
 4. Triggers, procedures and functions should be there
 5. CRUD Operations
 6. Nested, join, and aggrigate queries.
-
-
-
-1.login route redirect to student and professor page

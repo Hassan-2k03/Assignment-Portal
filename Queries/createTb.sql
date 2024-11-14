@@ -1,3 +1,16 @@
+/*
+University Assignment Portal - Database Schema
+
+This script creates the database schema for the assignment portal with the following components:
+1. User Management (User table with role-based access)
+2. Course Management (Course, Enrollment, EnrollmentRequest tables)
+3. Assignment Management (Assignment, Submission tables)
+4. Content Management (CourseMaterial, Announcement tables)
+5. Notification System (Notification table)
+
+All tables include appropriate foreign key constraints and indexes for optimization.
+*/
+
 -- User table
 CREATE TABLE User (
     UserID INT AUTO_INCREMENT PRIMARY KEY,
@@ -73,6 +86,14 @@ CREATE TABLE Submission (
     FOREIGN KEY (AssignmentID) REFERENCES Assignment(AssignmentID),
     FOREIGN KEY (StudentID) REFERENCES User(UserID)
 );
+
+-- Update Submission table to include grading fields
+ALTER TABLE Submission
+ADD COLUMN GradedDate DATETIME NULL,
+ADD COLUMN LastModified DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+-- Add index for faster grading queries
+CREATE INDEX idx_submission_assignment ON Submission(AssignmentID);
 
 -- GradeRubric table (linked to Assignment)
 CREATE TABLE GradeRubric (
