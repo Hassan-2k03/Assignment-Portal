@@ -12,3 +12,12 @@ points to keep in mind
 4. Triggers, procedures and functions should be there
 5. CRUD Operations
 6. Nested, join, and aggrigate queries.
+
+SET FOREIGN_KEY_CHECKS = 0;  -- Temporarily disable foreign key checks
+
+TRUNCATE TABLE Defines;
+TRUNCATE TABLE Submission;
+TRUNCATE TABLE GradeRubric;
+TRUNCATE TABLE Assignment;
+
+SET FOREIGN_KEY_CHECKS = 1;  -- Re-enable foreign key checks
