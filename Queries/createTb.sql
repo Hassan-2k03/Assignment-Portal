@@ -6,7 +6,8 @@ CREATE TABLE User (
     FirstName VARCHAR(255),
     LastName VARCHAR(255),
     Email VARCHAR(255),
-    Role ENUM('student', 'professor', 'admin') NOT NULL
+    Role ENUM('student', 'professor', 'admin') NOT NULL,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Course table
@@ -17,7 +18,8 @@ CREATE TABLE Course (
     InstructorID INT,
     Year INT, 
     Semester INT,
-    FOREIGN KEY (InstructorID) REFERENCES User(UserID)
+    FOREIGN KEY (InstructorID) REFERENCES User(UserID),
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Assignment table
@@ -99,5 +101,29 @@ CREATE TABLE IF NOT EXISTS CourseMaterial (
     Description TEXT,
     UploadDate DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (CourseID) REFERENCES Course(CourseID) ON DELETE CASCADE
+);
+
+-- Enrollment table
+CREATE TABLE Enrollment (
+    EnrollmentID INT AUTO_INCREMENT PRIMARY KEY,
+    StudentID INT NOT NULL,
+    CourseID INT NOT NULL,
+    EnrollmentDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Status ENUM('active', 'dropped') DEFAULT 'active',
+    FOREIGN KEY (StudentID) REFERENCES User(UserID),
+    FOREIGN KEY (CourseID) REFERENCES Course(CourseID),
+    UNIQUE KEY unique_enrollment (StudentID, CourseID)
+);
+
+CREATE TABLE EnrollmentRequest (
+    RequestID INT AUTO_INCREMENT PRIMARY KEY,
+    StudentID INT NOT NULL,
+    CourseID INT NOT NULL,
+    RequestDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ProcessedDate DATETIME,
+    Status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    FOREIGN KEY (StudentID) REFERENCES User(UserID),
+    FOREIGN KEY (CourseID) REFERENCES Course(CourseID),
+    UNIQUE KEY unique_request (StudentID, CourseID, Status)
 );
 
