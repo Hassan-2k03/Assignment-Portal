@@ -46,17 +46,17 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Modify the root route to redirect to login
+# Modify the root route to handle role-based redirection
 @app.route('/')
 def index():
     if 'user_id' in session:
         role = session.get('role')
         if role == 'admin':
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_dashboard_page'))
         elif role == 'professor':
-            return redirect(url_for('professor_dashboard'))
+            return redirect(url_for('professor_dashboard_page'))
         else:
-            return redirect(url_for('student_dashboard'))
+            return redirect(url_for('student_dashboard_page'))
     return redirect(url_for('login_page'))
 
 # Add new routes for serving HTML pages
@@ -71,6 +71,28 @@ def register_page():
     if 'user_id' in session:
         return redirect(url_for('index'))
     return render_template('register.html')
+
+# Add new routes for serving dashboard pages
+@app.route('/admin-dashboard-page')
+@login_required
+def admin_dashboard_page():
+    if session.get('role') != 'admin':
+        return redirect(url_for('index'))
+    return render_template('admin_dashboard.html')
+
+@app.route('/professor-dashboard-page')
+@login_required
+def professor_dashboard_page():
+    if session.get('role') != 'professor':
+        return redirect(url_for('index'))
+    return render_template('professor_dashboard.html')
+
+@app.route('/student-dashboard-page')
+@login_required
+def student_dashboard_page():
+    if session.get('role') != 'student':
+        return redirect(url_for('index'))
+    return render_template('student_dashboard.html')
 
 # ============ Common Routes ============
 # Modify existing register route to handle both form and API requests
@@ -108,7 +130,7 @@ def register():
         print(f"Error during registration: {err}")
         return jsonify({'message': 'Registration failed'}), 500
 
-# Modify existing login route to handle both form and API requests
+# Modify login route to handle proper redirections
 @app.route('/login', methods=['POST'])
 def login():
     """Authenticate users and create session."""
@@ -133,12 +155,13 @@ def login():
             session['role'] = user['Role']
             session['username'] = user['Username']
 
+            # Redirect based on role
             if user['Role'] == 'admin':
-                return redirect(url_for('admin_dashboard'))
+                return redirect(url_for('admin_dashboard_page'))
             elif user['Role'] == 'professor':
-                return redirect(url_for('professor_dashboard'))
+                return redirect(url_for('professor_dashboard_page'))
             else:
-                return redirect(url_for('student_dashboard'))
+                return redirect(url_for('student_dashboard_page'))
         else:
             return jsonify({'message': 'Invalid credentials'}), 401
     except mysql.connector.Error as err:
@@ -166,7 +189,7 @@ def internal_error(error):
 @app.route('/admin-dashboard')
 @login_required
 def admin_dashboard():
-    """Admin dashboard showing system statistics and recent activities."""
+    """Admin dashboard data API endpoint."""
     if session.get('role') != 'admin':
         return jsonify({'message': 'Only admins can access this route'}), 403
 
@@ -303,7 +326,7 @@ def approve_enrollment(request_id):
 @app.route('/professor-dashboard')
 @login_required
 def professor_dashboard():
-    """Professor dashboard showing assigned courses and student counts."""
+    """Professor dashboard data API endpoint."""
     if session.get('role') != 'professor':
         return jsonify({'message': 'Only professors can access this route'}), 403
 
@@ -472,7 +495,7 @@ def grade_submission(submission_id):
 @app.route('/student-dashboard')
 @login_required
 def student_dashboard():
-    """Student dashboard showing enrolled courses and available courses."""
+    """Student dashboard data API endpoint."""
     if session.get('role') != 'student':
         return jsonify({'message': 'Only students can access this route'}), 403
 
