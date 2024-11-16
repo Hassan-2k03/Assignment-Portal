@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, session, redirect, url_for, send_from_directory
+from flask import Flask, request, jsonify, session, redirect, url_for, send_from_directory, render_template
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import mysql.connector
@@ -46,20 +46,47 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# Modify the root route to redirect to login
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        role = session.get('role')
+        if role == 'admin':
+            return redirect(url_for('admin_dashboard'))
+        elif role == 'professor':
+            return redirect(url_for('professor_dashboard'))
+        else:
+            return redirect(url_for('student_dashboard'))
+    return redirect(url_for('login_page'))
+
+# Add new routes for serving HTML pages
+@app.route('/login', methods=['GET'])
+def login_page():
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET'])
+def register_page():
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    return render_template('register.html')
+
 # ============ Common Routes ============
+# Modify existing register route to handle both form and API requests
 @app.route('/register', methods=['POST'])
 def register():
     """Handle new user registration for all roles."""
-    print(request.url) 
-    data = request.get_json()
-    print(data)
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form
+
     username = data.get('username')
     password = data.get('password')
-
-    first_name = data.get('first_name')
-    last_name = data.get('last_name')
+    first_name = data.get('firstName')
+    last_name = data.get('lastName')
     email = data.get('email')
-
     role = data.get('role')
 
     # data validation  
@@ -73,15 +100,23 @@ def register():
         cursor.execute("INSERT INTO User (Username, Password, FirstName, LastName, Email, Role) VALUES (%s, %s, %s, %s, %s, %s)",
                        (username, hashed_password, first_name, last_name, email, role))
         mydb.commit()
-        return jsonify({'message': 'User registered successfully'}), 201
+        
+        if request.is_json:
+            return jsonify({'message': 'User registered successfully'}), 201
+        return redirect(url_for('login_page'))
     except mysql.connector.Error as err:
         print(f"Error during registration: {err}")
         return jsonify({'message': 'Registration failed'}), 500
 
+# Modify existing login route to handle both form and API requests
 @app.route('/login', methods=['POST'])
 def login():
     """Authenticate users and create session."""
-    data = request.get_json()
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form
+
     username = data.get('username')
     password = data.get('password')
 
@@ -96,35 +131,36 @@ def login():
         if user and check_password_hash(user['Password'], password):
             session['user_id'] = user['UserID']
             session['role'] = user['Role']
+            session['username'] = user['Username']
 
-            response_data = {
-                'message': 'Login successful',
-                'user_id': user['UserID'],
-                'role': user['Role']
-            }
-
-            # Add admin redirect
             if user['Role'] == 'admin':
-                response_data['redirect'] = '/admin-dashboard'
+                return redirect(url_for('admin_dashboard'))
             elif user['Role'] == 'professor':
-                response_data['redirect'] = '/professor-dashboard'
+                return redirect(url_for('professor_dashboard'))
             else:
-                response_data['redirect'] = '/student-dashboard'
-
-            return jsonify(response_data), 200
+                return redirect(url_for('student_dashboard'))
         else:
             return jsonify({'message': 'Invalid credentials'}), 401
     except mysql.connector.Error as err:
         print(f"Error during login: {err}")
         return jsonify({'message': 'Login failed'}), 500
 
+# Modify logout route to redirect to login page
 @app.route('/logout')
 @login_required
 def logout():
     """End user session and logout."""
-    print(request.url) 
-    session.pop('user_id', None)
-    return jsonify({'message': 'Logged out'}), 200
+    session.clear()
+    return redirect(url_for('login_page'))
+
+# Add error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('500.html'), 500
 
 # ============ Admin Routes ============
 @app.route('/admin-dashboard')
