@@ -696,5 +696,103 @@ def download_submission(submission_id):
         print(f"Error downloading submission: {err}")
         return jsonify({'message': 'Failed to download submission'}), 500
 
+@app.route('/course/<int:course_id>')
+@login_required
+def course_page(course_id):
+    """Serve the course details page."""
+    return render_template('course.html')
+
+@app.route('/api/courses/<int:course_id>')
+@login_required
+def get_course_details(course_id):
+    """Get detailed course information."""
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT c.*, 
+                   u.FirstName, u.LastName,
+                   COUNT(DISTINCT e.StudentID) as enrolled_count
+            FROM Course c
+            JOIN User u ON c.InstructorID = u.UserID
+            LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
+            WHERE c.CourseID = %s
+            GROUP BY c.CourseID
+        """, (course_id,))
+        
+        course = cursor.fetchone()
+        if not course:
+            return jsonify({'message': 'Course not found'}), 404
+
+        return jsonify({
+            'name': course['CourseName'],
+            'code': course['CourseCode'],
+            'instructor': f"{course['FirstName']} {course['LastName']}",
+            'semester': course['Semester'],
+            'year': course['Year'],
+            'enrolled_count': course['enrolled_count']
+        }), 200
+
+    except mysql.connector.Error as err:
+        print(f"Error fetching course details: {err}")
+        return jsonify({'message': 'Failed to fetch course details'}), 500
+
+@app.route('/api/user/role')
+@login_required
+def get_user_role():
+    """Get the current user's role."""
+    return jsonify({'role': session.get('role')}), 200
+
+@app.route('/assignments')
+@login_required
+def assignments_page():
+    """Serve the assignments listing page."""
+    return render_template('assignments.html')
+
+@app.route('/api/assignments')
+@login_required
+def get_assignments():
+    """Get filtered and sorted assignments."""
+    course_id = request.args.get('courseId')
+    status = request.args.get('status')
+    sort_by = request.args.get('sortBy', 'dueDate')
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # Build the query based on filters
+        query = """
+            SELECT a.*, c.CourseName, 
+                   COALESCE(s.Status, 'pending') as Status
+            FROM Assignment a
+            JOIN Course c ON a.CourseID = c.CourseID
+            LEFT JOIN Submission s ON a.AssignmentID = s.AssignmentID 
+                AND s.StudentID = %s
+            WHERE 1=1
+        """
+        params = [session['user_id']]
+
+        if course_id:
+            query += " AND a.CourseID = %s"
+            params.append(course_id)
+        
+        if status:
+            query += " AND COALESCE(s.Status, 'pending') = %s"
+            params.append(status)
+
+        # Add sorting
+        if sort_by == 'dueDate':
+            query += " ORDER BY a.DueDate"
+        elif sort_by == 'title':
+            query += " ORDER BY a.Title"
+        elif sort_by == 'status':
+            query += " ORDER BY COALESCE(s.Status, 'pending')"
+
+        cursor.execute(query, tuple(params))
+        assignments = cursor.fetchall()
+
+        return jsonify({'assignments': assignments}), 200
+    except mysql.connector.Error as err:
+        print(f"Error fetching assignments: {err}")
+        return jsonify({'message': 'Failed to fetch assignments'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True)
