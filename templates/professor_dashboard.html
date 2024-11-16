@@ -297,6 +297,103 @@
             display: flex;
             gap: 0.5rem;
         }
+
+        .course-detail-tabs {
+            display: flex;
+            gap: 1rem;
+            margin: 1rem 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+        }
+
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 1rem;
+            color: #666;
+            position: relative;
+        }
+
+        .tab-btn.active {
+            color: #3498db;
+            font-weight: 600;
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1rem;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #3498db;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 1rem 0;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        .detail-item {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+
+        .detail-item label {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .detail-item p {
+            color: #2c3e50;
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+
+        .section-actions {
+            margin-bottom: 1rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #2ecc71;
+            transition: width 0.3s ease;
+        }
+
+        .grade-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+
+        .grade-good { background-color: #2ecc71; color: white; }
+        .grade-average { background-color: #f1c40f; color: white; }
+        .grade-poor { background-color: #e74c3c; color: white; }
     </style>
 </head>
 <body>
@@ -434,6 +531,75 @@
                 </div>
                 <button type="submit" class="btn btn-primary">Submit Grade</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Course Details Modal -->
+    <div id="courseDetailsModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <span class="close" onclick="closeModal('courseDetailsModal')">&times;</span>
+            <h2 id="courseDetailsTitle">Course Details</h2>
+            <div class="course-detail-tabs">
+                <button class="tab-btn active" data-tab="overview">Overview</button>
+                <button class="tab-btn" data-tab="students">Students</button>
+                <button class="tab-btn" data-tab="assignments">Assignments</button>
+            </div>
+            <div class="course-detail-content">
+                <div id="overview" class="tab-content active">
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <label>Course Code:</label>
+                            <p id="detailCourseCode"></p>
+                        </div>
+                        <div class="detail-item">
+                            <label>Semester:</label>
+                            <p id="detailSemester"></p>
+                        </div>
+                        <div class="detail-item">
+                            <label>Total Students:</label>
+                            <p id="detailStudents"></p>
+                        </div>
+                        <div class="detail-item">
+                            <label>Active Assignments:</label>
+                            <p id="detailAssignments"></p>
+                        </div>
+                    </div>
+                </div>
+                <div id="students" class="tab-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Student Name</th>
+                                <th>Email</th>
+                                <th>Progress</th>
+                                <th>Completed</th>
+                                <th>Average Grade</th>
+                            </tr>
+                        </thead>
+                        <tbody id="studentsList">
+                        </tbody>
+                    </table>
+                </div>
+                <div id="assignments" class="tab-content">
+                    <div class="section-actions">
+                        <button class="btn btn-primary" onclick="createAssignment(currentCourseId)">
+                            Create New Assignment
+                        </button>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Due Date</th>
+                                <th>Submissions</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assignmentsList">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -612,6 +778,80 @@
         // Initial load and set interval for live updates
         updateDashboardStats();
         setInterval(updateDashboardStats, 5000); // Update every 5 seconds
+
+        // Add to your existing script
+        let currentCourseId = null;
+
+        function viewCourseDetails(courseId) {
+            currentCourseId = courseId;
+            fetch(`/api/courses/${courseId}/details`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('courseDetailsTitle').textContent = data.name;
+                    document.getElementById('detailCourseCode').textContent = data.code;
+                    document.getElementById('detailSemester').textContent = `Semester ${data.semester} - ${data.year}`;
+                    document.getElementById('detailStudents').textContent = data.enrolled_count;
+                    document.getElementById('detailAssignments').textContent = data.active_assignments;
+                    
+                    displayStudentsList(data.students);
+                    displayAssignmentsList(data.assignments);
+                    
+                    openModal('courseDetailsModal');
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function displayStudentsList(students) {
+            const tbody = document.getElementById('studentsList');
+            tbody.innerHTML = students.map(student => {
+                const gradeClass = student.average_grade >= 80 ? 'grade-good' : 
+                                 student.average_grade >= 60 ? 'grade-average' : 'grade-poor';
+                
+                return `
+                    <tr>
+                        <td>${student.name}</td>
+                        <td>${student.email}</td>
+                        <td>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${student.progress}%"></div>
+                            </div>
+                            <small>${student.progress}%</small>
+                        </td>
+                        <td>${student.completed_assignments}/${student.total_assignments}</td>
+                        <td><span class="grade-badge ${gradeClass}">${student.average_grade.toFixed(1)}%</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function displayAssignmentsList(assignments) {
+            const tbody = document.getElementById('assignmentsList');
+            tbody.innerHTML = assignments.map(assignment => `
+                <tr>
+                    <td>${assignment.title}</td>
+                    <td>${new Date(assignment.due_date).toLocaleString()}</td>
+                    <td>${assignment.submission_count}/${assignment.total_students}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="viewAssignment(${assignment.id})">
+                            View Details
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Add tab switching functionality
+        document.querySelectorAll('.tab-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                // Remove active class from all tabs and contents
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                
+                // Add active class to clicked tab and corresponding content
+                button.classList.add('active');
+                document.getElementById(button.dataset.tab).classList.add('active');
+            });
+        });
     </script>
 </body>
 </html>

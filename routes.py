@@ -1024,5 +1024,103 @@ def exit_course(course_id):
             'message': 'Failed to exit course'
         }), 500
 
+@app.route('/api/courses/<int:course_id>/details')
+@login_required
+def get_course_full_details(course_id):
+    """Get comprehensive course details including students and assignments."""
+    if session.get('role') != 'professor':
+        return jsonify({'message': 'Unauthorized access'}), 403
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # Get basic course info
+        cursor.execute("""
+            SELECT c.*, 
+                   (SELECT COUNT(DISTINCT e.StudentID) 
+                    FROM Enrollment e 
+                    WHERE e.CourseID = c.CourseID) as enrolled_count,
+                   (SELECT COUNT(*) 
+                    FROM Assignment a 
+                    WHERE a.CourseID = c.CourseID 
+                    AND a.DueDate > NOW()) as active_assignments
+            FROM Course c
+            WHERE c.CourseID = %s AND c.InstructorID = %s
+        """, (course_id, session['user_id']))
+        
+        course = cursor.fetchone()
+        if not course:
+            return jsonify({'message': 'Course not found or unauthorized'}), 404
+
+        # Update the enrolled students query to fix progress tracking
+        cursor.execute("""
+            SELECT 
+                u.UserID,
+                CONCAT(u.FirstName, ' ', u.LastName) as name,
+                u.Email,
+                (
+                    SELECT COUNT(DISTINCT s.SubmissionID)
+                    FROM Submission s
+                    JOIN Assignment a ON s.AssignmentID = a.AssignmentID
+                    WHERE s.StudentID = u.UserID 
+                    AND a.CourseID = %s
+                ) as completed_assignments,
+                (
+                    SELECT COUNT(*)
+                    FROM Assignment
+                    WHERE CourseID = %s
+                ) as total_assignments,
+                (
+                    SELECT AVG(CAST(s.Grade AS DECIMAL(5,2)))
+                    FROM Submission s
+                    JOIN Assignment a ON s.AssignmentID = a.AssignmentID
+                    WHERE s.StudentID = u.UserID 
+                    AND a.CourseID = %s
+                    AND s.Grade IS NOT NULL
+                ) as average_grade
+            FROM User u
+            JOIN Enrollment e ON u.UserID = e.StudentID
+            WHERE e.CourseID = %s AND e.Status = 'active'
+            GROUP BY u.UserID, u.FirstName, u.LastName, u.Email
+        """, (course_id, course_id, course_id, course_id))
+        
+        students = cursor.fetchall()
+        
+        # Process the students data to handle NULL values
+        for student in students:
+            student['average_grade'] = float(student['average_grade']) if student['average_grade'] else 0
+            student['completed_assignments'] = int(student['completed_assignments']) if student['completed_assignments'] else 0
+            student['total_assignments'] = int(student['total_assignments'])
+            student['progress'] = round((student['completed_assignments'] / student['total_assignments'] * 100) if student['total_assignments'] > 0 else 0, 1)
+
+        # Get course assignments
+        cursor.execute("""
+            SELECT 
+                a.AssignmentID as id,
+                a.Title as title,
+                a.DueDate as due_date,
+                COUNT(DISTINCT s.StudentID) as submission_count,
+                (SELECT COUNT(*) FROM Enrollment WHERE CourseID = %s) as total_students
+            FROM Assignment a
+            LEFT JOIN Submission s ON a.AssignmentID = s.AssignmentID
+            WHERE a.CourseID = %s
+            GROUP BY a.AssignmentID
+        """, (course_id, course_id))
+        assignments = cursor.fetchall()
+
+        return jsonify({
+            'name': course['CourseName'],
+            'code': course['CourseCode'],
+            'semester': course['Semester'],
+            'year': course['Year'],
+            'enrolled_count': course['enrolled_count'],
+            'active_assignments': course['active_assignments'],
+            'students': students,
+            'assignments': assignments
+        }), 200
+
+    except mysql.connector.Error as err:
+        print(f"Error fetching course details: {err}")
+        return jsonify({'message': 'Failed to fetch course details'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True)
