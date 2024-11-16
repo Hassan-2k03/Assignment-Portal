@@ -298,6 +298,21 @@
         .dropzone:hover {
             background-color: #f7f9fc;
         }
+
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+
+        .course-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -411,31 +426,35 @@
                     <h3>${course.CourseName}</h3>
                     <p>Instructor: ${course.instructor_name}</p>
                     <p>Code: ${course.CourseCode}</p>
-                    <button class="btn btn-primary" onclick="viewCourseDetails(${course.CourseID})">
-                        View Details
-                    </button>
+                    <div class="course-actions">
+                        <button class="btn btn-danger" onclick="exitCourse(${course.CourseID}, '${course.CourseName}')">
+                            Leave Course
+                        </button>
+                    </div>
                 </div>
             `).join('');
         }
 
         function displayAvailableCourses(courses) {
             const container = document.getElementById('availableCourses');
-            container.innerHTML = courses.map(course => {
-                const buttonHtml = course.enrollment_requested ? 
-                    `<button class="btn" disabled>Request Pending</button>` :
-                    `<button class="btn btn-primary" onclick="requestEnrollment(${course.CourseID})">
-                        Request Enrollment
-                    </button>`;
-                
-                return `
-                    <div class="course-card">
-                        <h3>${course.CourseName}</h3>
-                        <p>Instructor: ${course.instructor_name}</p>
-                        <p>Code: ${course.CourseCode}</p>
-                        ${buttonHtml}
-                    </div>
-                `;
-            }).join('');
+            container.innerHTML = courses.length === 0 ? 
+                '<p>No available courses</p>' :
+                courses.map(course => {
+                    const buttonHtml = course.enrollment_requested ? 
+                        `<button class="btn" disabled>Request Pending</button>` :
+                        `<button class="btn btn-primary" onclick="requestEnrollment(${course.CourseID})">
+                            Request Enrollment
+                        </button>`;
+                    
+                    return `
+                        <div class="course-card">
+                            <h3>${course.CourseName}</h3>
+                            <p>Instructor: ${course.instructor_name}</p>
+                            <p>Code: ${course.CourseCode}</p>
+                            ${buttonHtml}
+                        </div>
+                    `;
+                }).join('');
         }
 
         function setupEventListeners() {
@@ -487,7 +506,28 @@
             .catch(error => console.error('Error:', error));
         }
 
-        // Add more functions for handling assignments, submissions, etc.
+        function exitCourse(courseId, courseName) {
+            if (!confirm(`Are you sure you want to exit from ${courseName}? This action cannot be undone.`)) {
+                return;
+            }
+
+            fetch(`/student/courses/exit/${courseId}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    fetchDashboardData();  // This will refresh both enrolled and available courses
+                } else {
+                    alert(data.message || 'Failed to exit course');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while trying to exit the course');
+            });
+        }
     </script>
 </body>
-</html>
+</html>  

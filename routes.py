@@ -948,5 +948,56 @@ def get_assignments():
         print(f"Error fetching assignments: {err}")
         return jsonify({'message': 'Failed to fetch assignments'}), 500
 
+@app.route('/student/courses/exit/<int:course_id>', methods=['POST'])
+@login_required
+def exit_course(course_id):
+    """Handle student's request to exit a course."""
+    if session.get('role') != 'student':
+        return jsonify({'success': False, 'message': 'Only students can exit courses'}), 403
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # Start a transaction
+        cursor.execute("START TRANSACTION")
+        
+        # Check if student is enrolled in the course
+        cursor.execute("""
+            SELECT 1 FROM Enrollment 
+            WHERE StudentID = %s AND CourseID = %s AND Status = 'active'
+        """, (session['user_id'], course_id))
+        
+        if not cursor.fetchone():
+            cursor.execute("ROLLBACK")
+            return jsonify({
+                'success': False,
+                'message': 'You are not enrolled in this course'
+            }), 404
+
+        # Delete the enrollment record instead of updating status
+        cursor.execute("""
+            DELETE FROM Enrollment 
+            WHERE StudentID = %s AND CourseID = %s
+        """, (session['user_id'], course_id))
+        
+        # Also delete any pending enrollment requests
+        cursor.execute("""
+            DELETE FROM EnrollmentRequest 
+            WHERE StudentID = %s AND CourseID = %s
+        """, (session['user_id'], course_id))
+        
+        cursor.execute("COMMIT")
+        return jsonify({
+            'success': True,
+            'message': 'Successfully exited from the course'
+        }), 200
+
+    except mysql.connector.Error as err:
+        cursor.execute("ROLLBACK")
+        print(f"Error exiting course: {err}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to exit course'
+        }), 500
+
 if __name__ == '__main__':
     app.run(debug=True)
