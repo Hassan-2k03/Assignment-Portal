@@ -560,7 +560,6 @@ def edit_course(course_id):
 @app.route('/professor-dashboard')
 @login_required
 def professor_dashboard():
-    """Professor dashboard data API endpoint."""
     if session.get('role') != 'professor':
         return jsonify({'message': 'Only professors can access this route'}), 403
 
@@ -583,10 +582,30 @@ def professor_dashboard():
         
         stats = cursor.fetchone()
         
-        # Rest of the dashboard data fetching logic...
+        # Get teaching courses with detailed information
+        cursor.execute("""
+            SELECT 
+                c.*,
+                (SELECT COUNT(DISTINCT e.StudentID) 
+                 FROM Enrollment e 
+                 WHERE e.CourseID = c.CourseID) as enrolled_students,
+                (SELECT COUNT(a.AssignmentID) 
+                 FROM Assignment a 
+                 WHERE a.CourseID = c.CourseID) as assignment_count,
+                (SELECT COUNT(*) 
+                 FROM Submission s 
+                 JOIN Assignment a ON s.AssignmentID = a.AssignmentID 
+                 WHERE a.CourseID = c.CourseID AND s.Grade IS NULL) as pending_submissions
+            FROM Course c
+            WHERE c.InstructorID = %s
+            ORDER BY c.Year DESC, c.Semester DESC
+        """, (session['user_id'],))
+        
+        courses = cursor.fetchall()
         
         return jsonify({
             'stats': stats,
+            'courses': courses,
             'professor_name': session.get('username')
         }), 200
         
