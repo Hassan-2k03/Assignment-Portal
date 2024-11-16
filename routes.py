@@ -225,39 +225,10 @@ def admin_dashboard():
             ORDER BY c.CourseCode
         """)
         courses = cursor.fetchall()
-        
-        # Debug print
-        print("Fetched courses:", courses)
-
-        # Rest of the activities query
-        cursor.execute("""
-            SELECT * FROM (
-                SELECT 'New Login' as type, 
-                       CONCAT(FirstName, ' ', LastName, ' (', Role, ')') as detail,
-                       LastLogin as timestamp
-                FROM User 
-                WHERE LastLogin IS NOT NULL
-                ORDER BY LastLogin DESC LIMIT 5
-            ) as logins
-            UNION ALL
-            SELECT * FROM (
-                SELECT 'New Enrollment' as type,
-                       CONCAT(u.FirstName, ' ', u.LastName, ' enrolled in ', c.CourseName) as detail,
-                       e.EnrollmentDate as timestamp
-                FROM Enrollment e
-                JOIN User u ON e.StudentID = u.UserID
-                JOIN Course c ON e.CourseID = c.CourseID
-                ORDER BY e.EnrollmentDate DESC LIMIT 5
-            ) as enrollments
-            ORDER BY timestamp DESC
-            LIMIT 10
-        """)
-        activities = cursor.fetchall()
 
         return jsonify({
             'stats': stats,
             'courses': courses,
-            'recent_activities': activities,
             'admin_name': session.get('username')
         }), 200
 

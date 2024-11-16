@@ -315,23 +315,6 @@
                     </tbody>
                 </table>
             </div>
-
-            <!-- Recent Activities Section -->
-            <div class="dashboard-section">
-                <h2>Recent Activities</h2>
-                <table class="data-table" id="activitiesTable">
-                    <thead>
-                        <tr>
-                            <th>Activity</th>
-                            <th>User</th>
-                            <th>Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Activities will be populated here -->
-                    </tbody>
-                </table>
-            </div>
         </div>
     </div>
 
@@ -435,7 +418,6 @@
                     console.log('Dashboard data:', data); // Debug log
                     updateStats(data.stats);
                     updateCoursesTable(data.courses);
-                    updateActivities(data.recent_activities);
                 })
                 .catch(error => console.error('Error:', error));
         }
@@ -446,21 +428,6 @@
             document.getElementById('professorCount').textContent = stats.professor_count;
             document.getElementById('activeCourses').textContent = stats.active_courses;
             document.getElementById('activeAssignments').textContent = stats.active_assignments;
-        }
-
-        function updateActivities(activities) {
-            const tbody = document.querySelector('#activitiesTable tbody');
-            tbody.innerHTML = '';
-            activities.forEach(activity => {
-                const row = `
-                    <tr>
-                        <td>${activity.type}</td>
-                        <td>${activity.detail}</td>
-                        <td>${new Date(activity.timestamp).toLocaleString()}</td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
-            });
         }
 
         function openModal(modalId) {
@@ -526,9 +493,6 @@
                     updateStatWithAnimation('professorCount', data.stats.professor_count);
                     updateStatWithAnimation('activeCourses', data.stats.active_courses);
                     updateStatWithAnimation('activeAssignments', data.stats.active_assignments);
-
-                    // Update activities table
-                    updateActivities(data.recent_activities);
                 })
                 .catch(error => console.error('Error:', error));
         }
@@ -550,17 +514,6 @@
         // Call immediately and set interval
         updateDashboardData();
         setInterval(updateDashboardData, 5000); // Update every 5 seconds
-
-        function updateActivities(activities) {
-            const tbody = document.querySelector('#activitiesTable tbody');
-            tbody.innerHTML = activities.map(activity => `
-                <tr>
-                    <td>${activity.type}</td>
-                    <td>${activity.detail}</td>
-                    <td>${new Date(activity.timestamp).toLocaleString()}</td>
-                </tr>
-            `).join('');
-        }
 
         function loadProfessors() {
             fetch('/api/professors')
@@ -693,4 +646,4 @@
         }
     </script>
 </body>
-</html>  
+</html>

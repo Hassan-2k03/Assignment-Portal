@@ -19,8 +19,7 @@ CREATE TABLE User (
     FirstName VARCHAR(255),
     LastName VARCHAR(255),
     Email VARCHAR(255),
-    Role ENUM('student', 'professor', 'admin') NOT NULL,
-    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    Role ENUM('student', 'professor', 'admin') NOT NULL
 );
 
 -- Course table
@@ -31,8 +30,7 @@ CREATE TABLE Course (
     InstructorID INT,
     Year INT, 
     Semester INT,
-    FOREIGN KEY (InstructorID) REFERENCES User(UserID),
-    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    FOREIGN KEY (InstructorID) REFERENCES User(UserID)
 );
 
 -- Assignment table
@@ -89,8 +87,7 @@ CREATE TABLE Submission (
 
 -- Update Submission table to include grading fields
 ALTER TABLE Submission
-ADD COLUMN GradedDate DATETIME NULL,
-ADD COLUMN LastModified DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+ADD COLUMN GradedDate DATETIME NULL;
 
 -- Add index for faster grading queries
 CREATE INDEX idx_submission_assignment ON Submission(AssignmentID);
@@ -147,10 +144,3 @@ CREATE TABLE EnrollmentRequest (
     FOREIGN KEY (CourseID) REFERENCES Course(CourseID),
     UNIQUE KEY unique_request (StudentID, CourseID, Status)
 );
-
-ALTER TABLE User 
-ADD COLUMN Active BOOLEAN DEFAULT 1,
-ADD COLUMN LastLogin DATETIME;
-
-ALTER TABLE Assignment
-ADD COLUMN Status VARCHAR(20) DEFAULT 'active';
