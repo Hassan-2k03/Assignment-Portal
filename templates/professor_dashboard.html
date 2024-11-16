@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professor Dashboard - Assignment Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        .dashboard-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 250px;
+            background: #2c3e50;
+            color: white;
+            padding: 2rem;
+        }
+
+        .sidebar-header {
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .sidebar-nav {
+            list-style: none;
+        }
+
+        .sidebar-nav li {
+            margin-bottom: 1rem;
+        }
+
+        .sidebar-nav a {
+            color: white;
+            text-decoration: none;
+            display: block;
+            padding: 0.8rem;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+
+        .sidebar-nav a:hover {
+            background-color: #34495e;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card h3 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #3498db;
+        }
+
+        /* Dashboard Sections */
+        .dashboard-section {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        /* Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th, .data-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+
+        /* Button Styles */
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.3s;
+        }
+
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+
+        .logout-btn {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .logout-btn:hover {
+            background-color: #c0392b;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 2rem;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .close {
+            float: right;
+            cursor: pointer;
+            font-size: 1.5rem;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.8rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        /* Professor-specific styles */
+        .course-assignments {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .assignment-stats {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .assignment-stat {
+            background: white;
+            padding: 0.8rem;
+            border-radius: 4px;
+            flex: 1;
+            text-align: center;
+        }
+
+        .grade-distribution {
+            height: 100px;
+            background: white;
+            margin: 1rem 0;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+
+        .submission-row {
+            cursor: pointer;
+        }
+
+        .submission-row:hover {
+            background-color: #f5f5f5;
+        }
+
+        .feedback-input {
+            width: 100%;
+            min-height: 100px;
+            padding: 0.8rem;
+            margin: 1rem 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Professor Portal</h2>
+            </div>
+            <ul class="sidebar-nav">
+                <li><a href="#dashboard" class="active">Dashboard</a></li>
+                <li><a href="#courses">My Courses</a></li>
+                <li><a href="#assignments">Assignments</a></li>
+                <li><a href="#submissions">Submissions</a></li>
+                <li><a href="#grades">Grade Management</a></li>
+                <li><a href="/logout" class="logout-btn">Logout</a></li>
+            </ul>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="header">
+                <h1>Professor Dashboard</h1>
+                <div class="user-info">
+                    <span id="professorName">Welcome, Professor</span>
+                </div>
+            </div>
+
+            <!-- Statistics Grid -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Active Courses</h3>
+                    <div class="number" id="activeCourses">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Students</h3>
+                    <div class="number" id="totalStudents">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Pending Submissions</h3>
+                    <div class="number" id="pendingSubmissions">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Average Grade</h3>
+                    <div class="number" id="averageGrade">0</div>
+                </div>
+            </div>
+
+            <!-- Course Management Section -->
+            <div class="dashboard-section">
+                <div class="section-header">
+                    <h2>My Courses</h2>
+                    <button class="btn btn-primary" onclick="openModal('createAssignmentModal')">Create Assignment</button>
+                </div>
+                <div id="coursesList">
+                    <!-- Courses will be populated here -->
+                </div>
+            </div>
+
+            <!-- Recent Submissions Section -->
+            <div class="dashboard-section">
+                <div class="section-header">
+                    <h2>Recent Submissions</h2>
+                </div>
+                <table class="data-table" id="submissionsTable">
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Assignment</th>
+                            <th>Course</th>
+                            <th>Submission Date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Submissions will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Assignment Modal -->
+    <div id="createAssignmentModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('createAssignmentModal')">&times;</span>
+            <h2>Create New Assignment</h2>
+            <form id="createAssignmentForm">
+                <div class="form-group">
+                    <label for="courseSelect">Course</label>
+                    <select id="courseSelect" name="course_id" required>
+                        <!-- Courses will be populated here -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentTitle">Title</label>
+                    <input type="text" id="assignmentTitle" name="title" required>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentDescription">Description</label>
+                    <textarea id="assignmentDescription" name="description" class="feedback-input" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="dueDate">Due Date</label>
+                    <input type="datetime-local" id="dueDate" name="due_date" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Assignment</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Grade Submission Modal -->
+    <div id="gradeModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('gradeModal')">&times;</span>
+            <h2>Grade Submission</h2>
+            <form id="gradeForm">
+                <div class="form-group">
+                    <label for="grade">Grade</label>
+                    <input type="number" id="grade" name="grade" min="0" max="100" required>
+                </div>
+                <div class="form-group">
+                    <label for="feedback">Feedback</label>
+                    <textarea id="feedback" name="feedback" class="feedback-input"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Submit Grade</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchProfessorDashboard();
+            setupEventListeners();
+        });
+
+        function fetchProfessorDashboard() {
+            fetch('/professor-dashboard')
+                .then(response => response.json())
+                .then(data => {
+                    updateDashboardStats(data);
+                    displayCourses(data.courses);
+                    updateProfessorName(data.professor_name);
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function updateDashboardStats(data) {
+            document.getElementById('activeCourses').textContent = data.courses.length;
+            document.getElementById('totalStudents').textContent = data.courses.reduce((acc, course) => acc + course.enrolled_students, 0);
+            document.getElementById('pendingSubmissions').textContent = data.pending_submissions || 0;
+            document.getElementById('averageGrade').textContent = data.average_grade || 'N/A';
+        }
+
+        function displayCourses(courses) {
+            const coursesList = document.getElementById('coursesList');
+            coursesList.innerHTML = courses.map(course => `
+                <div class="dashboard-section">
+                    <h3>${course.CourseName} (${course.CourseCode})</h3>
+                    <div class="assignment-stats">
+                        <div class="assignment-stat">
+                            <h4>Students</h4>
+                            <p>${course.enrolled_students}</p>
+                        </div>
+                        <div class="assignment-stat">
+                            <h4>Assignments</h4>
+                            <p>${course.assignment_count}</p>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="viewCourseDetails(${course.CourseID})">
+                        View Details
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function setupEventListeners() {
+            document.getElementById('createAssignmentForm').addEventListener('submit', handleAssignmentCreation);
+            document.getElementById('gradeForm').addEventListener('submit', handleGradeSubmission);
+        }
+
+        function handleAssignmentCreation(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            
+            fetch('/courses/' + formData.get('course_id') + '/assignments', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                if (data.message.includes('successfully')) {
+                    closeModal('createAssignmentModal');
+                    fetchProfessorDashboard();
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function handleGradeSubmission(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const submissionId = e.target.dataset.submissionId;
+
+            fetch(`/submissions/${submissionId}/grade`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                if (data.message.includes('successfully')) {
+                    closeModal('gradeModal');
+                    fetchProfessorDashboard();
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        // Modal functions
+        function openModal(modalId) {
+            document.getElementById(modalId).style.display = 'block';
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            if (event.target.className === 'modal') {
+                event.target.style.display = 'none';
+            }
+        };
+    </script>
+</body>
+</html>
