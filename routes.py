@@ -195,7 +195,7 @@ def admin_dashboard():
 
     cursor = mydb.cursor(dictionary=True)
     try:
-        # Updated statistics query to show all courses
+        # Stats query
         cursor.execute("""
             SELECT 
                 (SELECT COUNT(*) FROM User WHERE Role = 'student' AND Active = 1) as student_count,
@@ -207,7 +207,29 @@ def admin_dashboard():
         """)
         stats = cursor.fetchone()
 
-        # Get recent activities
+        # Courses query with proper joins and GROUP BY
+        cursor.execute("""
+            SELECT 
+                c.CourseID,
+                c.CourseCode,
+                c.CourseName,
+                c.Year,
+                c.Semester,
+                CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
+                COUNT(DISTINCT e.StudentID) as EnrolledCount
+            FROM Course c
+            LEFT JOIN User u ON c.InstructorID = u.UserID
+            LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
+            GROUP BY c.CourseID, c.CourseCode, c.CourseName, c.Year, c.Semester, 
+                     u.FirstName, u.LastName
+            ORDER BY c.CourseCode
+        """)
+        courses = cursor.fetchall()
+        
+        # Debug print
+        print("Fetched courses:", courses)
+
+        # Rest of the activities query
         cursor.execute("""
             SELECT * FROM (
                 SELECT 'New Login' as type, 
@@ -234,9 +256,11 @@ def admin_dashboard():
 
         return jsonify({
             'stats': stats,
+            'courses': courses,
             'recent_activities': activities,
             'admin_name': session.get('username')
         }), 200
+
     except mysql.connector.Error as err:
         print(f"Error fetching dashboard data: {err}")
         return jsonify({'message': 'Error fetching dashboard data'}), 500
@@ -391,6 +415,42 @@ def approve_enrollment(request_id):
         cursor.execute("ROLLBACK")
         print(f"Error processing enrollment: {err}")
         return jsonify({'message': 'Failed to process enrollment request'}), 500
+
+# Add course deletion route
+@app.route('/admin/courses/<int:course_id>/delete', methods=['POST'])
+@login_required
+def delete_course(course_id):
+    if session.get('role') != 'admin':
+        return jsonify({
+            'success': False,
+            'message': 'Only admins can delete courses'
+        }), 403
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # Check if course exists
+        cursor.execute("SELECT 1 FROM Course WHERE CourseID = %s", (course_id,))
+        if not cursor.fetchone():
+            return jsonify({
+                'success': False,
+                'message': 'Course not found'
+            }), 404
+
+        # Delete course (this will cascade to related records if set up in DB)
+        cursor.execute("DELETE FROM Course WHERE CourseID = %s", (course_id,))
+        mydb.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Course deleted successfully'
+        }), 200
+
+    except mysql.connector.Error as err:
+        print(f"Error deleting course: {err}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to delete course'
+        }), 500
 
 # ============ Professor Routes ============
 @app.route('/professor-dashboard')

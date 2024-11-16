@@ -388,17 +388,20 @@
             fetch('/admin-dashboard')
                 .then(response => response.json())
                 .then(data => {
+                    console.log('Dashboard data:', data); // Debug log
                     updateStats(data.stats);
+                    updateCoursesTable(data.courses);
                     updateActivities(data.recent_activities);
                 })
                 .catch(error => console.error('Error:', error));
         }
 
         function updateStats(stats) {
+            // Fix the IDs to match the HTML
             document.getElementById('studentCount').textContent = stats.student_count;
             document.getElementById('professorCount').textContent = stats.professor_count;
-            document.getElementById('courseCount').textContent = stats.course_count;
-            document.getElementById('assignmentCount').textContent = stats.assignment_count;
+            document.getElementById('activeCourses').textContent = stats.active_courses;
+            document.getElementById('activeAssignments').textContent = stats.active_assignments;
         }
 
         function updateActivities(activities) {
@@ -530,6 +533,59 @@
                     });
                     })
                 .catch(error => console.error('Error:', error));
+        }
+
+        function updateCoursesTable(courses) {
+            const tbody = document.querySelector('#coursesTable tbody');
+            if (!courses || courses.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5">No courses found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = courses.map(course => `
+                <tr>
+                    <td>${course.CourseCode || ''}</td>
+                    <td>${course.CourseName || ''}</td>
+                    <td>${course.InstructorName || 'No instructor assigned'}</td>
+                    <td>${course.EnrolledCount || 0}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="editCourse(${course.CourseID})">Edit</button>
+                        <button class="btn btn-primary" onclick="viewEnrollments(${course.CourseID})">Enrollments</button>
+                        <button class="btn btn-primary" onclick="deleteCourse(${course.CourseID})">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function editCourse(courseId) {
+            // Implement course editing functionality
+            console.log('Editing course:', courseId);
+        }
+
+        function viewEnrollments(courseId) {
+            // Implement enrollment viewing functionality
+            console.log('Viewing enrollments for course:', courseId);
+        }
+
+        function deleteCourse(courseId) {
+            if (confirm('Are you sure you want to delete this course?')) {
+                fetch(`/admin/courses/${courseId}/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        fetchDashboardData();
+                        alert('Course deleted successfully');
+                    } else {
+                        alert(data.message || 'Failed to delete course');
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+            }
         }
     </script>
 </body>
