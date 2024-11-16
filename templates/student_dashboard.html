@@ -420,16 +420,22 @@
 
         function displayAvailableCourses(courses) {
             const container = document.getElementById('availableCourses');
-            container.innerHTML = courses.map(course => `
-                <div class="course-card">
-                    <h3>${course.CourseName}</h3>
-                    <p>Instructor: ${course.instructor_name}</p>
-                    <p>Code: ${course.CourseCode}</p>
-                    <button class="btn btn-primary" onclick="requestEnrollment(${course.CourseID})">
+            container.innerHTML = courses.map(course => {
+                const buttonHtml = course.enrollment_requested ? 
+                    `<button class="btn" disabled>Request Pending</button>` :
+                    `<button class="btn btn-primary" onclick="requestEnrollment(${course.CourseID})">
                         Request Enrollment
-                    </button>
-                </div>
-            `).join('');
+                    </button>`;
+                
+                return `
+                    <div class="course-card">
+                        <h3>${course.CourseName}</h3>
+                        <p>Instructor: ${course.instructor_name}</p>
+                        <p>Code: ${course.CourseCode}</p>
+                        ${buttonHtml}
+                    </div>
+                `;
+            }).join('');
         }
 
         function setupEventListeners() {
@@ -464,13 +470,17 @@
         }
 
         function requestEnrollment(courseId) {
+            if (!confirm('Are you sure you want to request enrollment in this course?')) {
+                return;
+            }
+            
             fetch(`/student/courses/request/${courseId}`, {
                 method: 'POST'
             })
             .then(response => response.json())
             .then(data => {
                 alert(data.message);
-                if (data.message.includes('successfully')) {
+                if (data.success) {
                     fetchDashboardData();
                 }
             })
@@ -480,4 +490,4 @@
         // Add more functions for handling assignments, submissions, etc.
     </script>
 </body>
-</html>  
+</html>

@@ -315,6 +315,27 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Enrollment Requests Section -->
+            <div class="dashboard-section">
+                <div class="section-header">
+                    <h2>Enrollment Requests</h2>
+                </div>
+                <table class="data-table" id="enrollmentRequestsTable">
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Course</th>
+                            <th>Request Date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Enrollment requests will be populated here -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -418,6 +439,7 @@
                     console.log('Dashboard data:', data); // Debug log
                     updateStats(data.stats);
                     updateCoursesTable(data.courses);
+                    updateEnrollmentRequests(data.enrollment_requests); // Add this line
                 })
                 .catch(error => console.error('Error:', error));
         }
@@ -547,7 +569,6 @@
                     <td>${course.EnrolledCount || 0}</td>
                     <td>
                         <button class="btn btn-primary" onclick="editCourse(${course.CourseID})">Edit</button>
-                        <button class="btn btn-primary" onclick="viewEnrollments(${course.CourseID})">Enrollments</button>
                         <button class="btn btn-primary" onclick="deleteCourse(${course.CourseID})">Delete</button>
                     </td>
                 </tr>
@@ -643,6 +664,53 @@
                 })
                 .catch(error => console.error('Error:', error));
             }
+        }
+
+        function updateEnrollmentRequests(requests) {
+            const tbody = document.querySelector('#enrollmentRequestsTable tbody');
+            if (!requests || requests.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5">No pending enrollment requests</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = requests.map(request => `
+                <tr>
+                    <td>${request.StudentName}</td>
+                    <td>${request.CourseName} (${request.CourseCode})</td>
+                    <td>${new Date(request.RequestDate).toLocaleString()}</td>
+                    <td>${request.Status}</td>
+                    <td>
+                        ${request.Status === 'pending' ? `
+                            <button class="btn btn-primary" onclick="handleEnrollment(${request.RequestID}, 'approve')">Approve</button>
+                            <button class="btn btn-primary" onclick="handleEnrollment(${request.RequestID}, 'reject')">Reject</button>
+                        ` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function handleEnrollment(requestId, action) {
+            fetch(`/admin/enrollment/${action}/${requestId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Immediately fetch updated data
+                    fetchDashboardData();
+                    // Show success message
+                    alert(`Enrollment request ${action}ed successfully`);
+                } else {
+                    alert(data.message || `Failed to ${action} enrollment`);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert(`An error occurred while ${action}ing enrollment`);
+            });
         }
     </script>
 </body>

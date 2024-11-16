@@ -226,9 +226,26 @@ def admin_dashboard():
         """)
         courses = cursor.fetchall()
 
+        # Add enrollment requests query
+        cursor.execute("""
+            SELECT 
+                er.RequestID,
+                DATE_FORMAT(er.RequestDate, '%Y-%m-%d %H:%i:%s') as RequestDate,
+                er.Status,
+                c.CourseName,
+                c.CourseCode,
+                CONCAT(u.FirstName, ' ', u.LastName) as StudentName
+            FROM EnrollmentRequest er
+            JOIN Course c ON er.CourseID = c.CourseID
+            JOIN User u ON er.StudentID = u.UserID
+            ORDER BY er.RequestDate DESC
+        """)
+        enrollment_requests = cursor.fetchall()
+
         return jsonify({
             'stats': stats,
             'courses': courses,
+            'enrollment_requests': enrollment_requests,
             'admin_name': session.get('username')
         }), 200
 
@@ -333,9 +350,11 @@ def admin_create_course():
 @app.route('/admin/enrollment/approve/<int:request_id>', methods=['POST'])
 @login_required
 def approve_enrollment(request_id):
-    """Process student enrollment requests."""
     if session.get('role') != 'admin':
-        return jsonify({'message': 'Only admins can approve enrollments'}), 403
+        return jsonify({
+            'success': False,
+            'message': 'Only admins can approve enrollments'
+        }), 403
 
     cursor = mydb.cursor(dictionary=True)
     try:
@@ -355,37 +374,71 @@ def approve_enrollment(request_id):
 
         # Start transaction
         cursor.execute("START TRANSACTION")
-        
-        # Update request status to approved
+        try:
+            # Update request status to approved
+            cursor.execute("""
+                UPDATE EnrollmentRequest 
+                SET Status = 'approved', ProcessedDate = NOW() 
+                WHERE RequestID = %s
+            """, (request_id,))
+
+            # Create new enrollment
+            cursor.execute("""
+                INSERT INTO Enrollment (StudentID, CourseID, EnrollmentDate)
+                VALUES (%s, %s, NOW())
+            """, (request['StudentID'], request['CourseID']))
+
+            # Create notification for student
+            cursor.execute("""
+                INSERT INTO Notification (UserID, Message, Timestamp)
+                SELECT %s, 
+                    CONCAT('Your enrollment request for course ', c.CourseName, ' has been approved'),
+                    NOW()
+                FROM Course c
+                WHERE c.CourseID = %s
+            """, (request['StudentID'], request['CourseID']))
+
+            cursor.execute("COMMIT")
+            return jsonify({
+                'success': True,
+                'message': 'Enrollment request approved successfully'
+            }), 200
+            
+        except mysql.connector.Error:
+            cursor.execute("ROLLBACK")
+            raise
+            
+    except mysql.connector.Error as err:
+        print(f"Error processing enrollment: {err}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to process enrollment request'
+        }), 500
+
+@app.route('/admin/enrollment/reject/<int:request_id>', methods=['POST'])
+@login_required
+def reject_enrollment(request_id):
+    """Reject student enrollment request."""
+    if session.get('role') != 'admin':
+        return jsonify({'success': False, 'message': 'Only admins can reject enrollments'}), 403
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
         cursor.execute("""
             UPDATE EnrollmentRequest 
-            SET Status = 'approved', ProcessedDate = NOW() 
-            WHERE RequestID = %s
+            SET Status = 'rejected', ProcessedDate = NOW() 
+            WHERE RequestID = %s AND Status = 'pending'
         """, (request_id,))
-
-        # Create new enrollment
-        cursor.execute("""
-            INSERT INTO Enrollment (StudentID, CourseID, EnrollmentDate)
-            VALUES (%s, %s, NOW())
-        """, (request['StudentID'], request['CourseID']))
-
-        # Create notification for student
-        cursor.execute("""
-            INSERT INTO Notification (UserID, Message, Timestamp)
-            SELECT %s, 
-                   CONCAT('Your enrollment request for course ', c.CourseName, ' has been approved'),
-                   NOW()
-            FROM Course c
-            WHERE c.CourseID = %s
-        """, (request['StudentID'], request['CourseID']))
-
-        cursor.execute("COMMIT")
-        return jsonify({'message': 'Enrollment request approved successfully'}), 200
+        
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'message': 'Request not found or already processed'}), 404
+        
+        mydb.commit()
+        return jsonify({'success': True, 'message': 'Enrollment request rejected successfully'}), 200
 
     except mysql.connector.Error as err:
-        cursor.execute("ROLLBACK")
-        print(f"Error processing enrollment: {err}")
-        return jsonify({'message': 'Failed to process enrollment request'}), 500
+        print(f"Error rejecting enrollment: {err}")
+        return jsonify({'success': False, 'message': 'Failed to reject enrollment request'}), 500
 
 # Add course deletion route
 @app.route('/admin/courses/<int:course_id>/delete', methods=['POST'])
