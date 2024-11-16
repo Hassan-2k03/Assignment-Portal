@@ -279,18 +279,17 @@
                 <div class="stat-card">
                     <h3>Active Courses</h3>
                     <div class="number" id="activeCourses">0</div>
+                    <p class="stat-trend">Currently Teaching</p>
                 </div>
                 <div class="stat-card">
                     <h3>Total Students</h3>
                     <div class="number" id="totalStudents">0</div>
+                    <p class="stat-trend">Enrolled Students</p>
                 </div>
                 <div class="stat-card">
-                    <h3>Pending Submissions</h3>
-                    <div class="number" id="pendingSubmissions">0</div>
-                </div>
-                <div class="stat-card">
-                    <h3>Average Grade</h3>
-                    <div class="number" id="averageGrade">0</div>
+                    <h3>Pending Assignments</h3>
+                    <div class="number" id="pendingAssignments">0</div>
+                    <p class="stat-trend">Need Grading</p>
                 </div>
             </div>
 
@@ -482,6 +481,36 @@
                 event.target.style.display = 'none';
             }
         };
+
+        // Add live update functionality
+        function updateDashboardStats() {
+            fetch('/professor-dashboard')
+                .then(response => response.json())
+                .then(data => {
+                    updateStatWithAnimation('activeCourses', data.stats.active_courses);
+                    updateStatWithAnimation('totalStudents', data.stats.total_students);
+                    updateStatWithAnimation('pendingAssignments', data.stats.pending_assignments);
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function updateStatWithAnimation(elementId, newValue) {
+            const element = document.getElementById(elementId);
+            const currentValue = parseInt(element.textContent);
+            
+            if (currentValue !== newValue) {
+                element.classList.add('number-changing');
+                element.textContent = newValue;
+                
+                setTimeout(() => {
+                    element.classList.remove('number-changing');
+                }, 500);
+            }
+        }
+
+        // Initial load and set interval for live updates
+        updateDashboardStats();
+        setInterval(updateDashboardStats, 5000); // Update every 5 seconds
     </script>
 </body>
 </html>

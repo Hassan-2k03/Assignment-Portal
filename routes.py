@@ -561,32 +561,38 @@ def edit_course(course_id):
 @login_required
 def professor_dashboard():
     """Professor dashboard data API endpoint."""
+    if session.get('role') != 'professor':
+        return jsonify({'message': 'Only professors can access this route'}), 403
+
     cursor = mydb.cursor(dictionary=True)
     try:
-        # Verify professor teaches this course
+        # Get professor stats
         cursor.execute("""
-            SELECT c.CourseID FROM Course c
-            JOIN Assignment a ON c.CourseID = a.CourseID
-            WHERE a.AssignmentID = %s AND c.InstructorID = %s
-        """, (assignment_id, session['user_id']))
+            SELECT 
+                (SELECT COUNT(*) FROM Course 
+                 WHERE InstructorID = %s) as active_courses,
+                (SELECT COUNT(DISTINCT e.StudentID) 
+                 FROM Enrollment e 
+                 JOIN Course c ON e.CourseID = c.CourseID 
+                 WHERE c.InstructorID = %s) as total_students,
+                (SELECT COUNT(*) FROM Submission s 
+                 JOIN Assignment a ON s.AssignmentID = a.AssignmentID 
+                 JOIN Course c ON a.CourseID = c.CourseID 
+                 WHERE c.InstructorID = %s AND s.Grade IS NULL) as pending_assignments
+        """, (session['user_id'], session['user_id'], session['user_id']))
         
-        if not cursor.fetchone():
-            return jsonify({'message': 'Not authorized to view these submissions'}), 403
-
-        # Get all submissions for this assignment
-        cursor.execute("""
-            SELECT s.*, u.FirstName, u.LastName, u.Username
-            FROM Submission s
-            JOIN User u ON s.StudentID = u.UserID
-            WHERE s.AssignmentID = %s
-            ORDER BY s.SubmissionDate DESC
-        """, (assignment_id,))
+        stats = cursor.fetchone()
         
-        submissions = cursor.fetchall()
-        return jsonify({'submissions': submissions}), 200
+        # Rest of the dashboard data fetching logic...
+        
+        return jsonify({
+            'stats': stats,
+            'professor_name': session.get('username')
+        }), 200
+        
     except mysql.connector.Error as err:
-        print(f"Error fetching submissions: {err}")
-        return jsonify({'message': 'Failed to fetch submissions'}), 500
+        print(f"Error fetching dashboard data: {err}")
+        return jsonify({'message': 'Error fetching dashboard data'}), 500
 
 @app.route('/submissions/<int:submission_id>/grade', methods=['POST'])
 @login_required
