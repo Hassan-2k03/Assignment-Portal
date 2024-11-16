@@ -241,43 +241,99 @@ def admin_dashboard():
         print(f"Error fetching dashboard data: {err}")
         return jsonify({'message': 'Error fetching dashboard data'}), 500
 
+@app.route('/api/professors')
+@login_required
+def get_professors():
+    """Get list of all professors for admin dashboard."""
+    if session.get('role') != 'admin':
+        return jsonify({'message': 'Unauthorized access'}), 403
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT UserID, FirstName, LastName, Email 
+            FROM User 
+            WHERE Role = 'professor' AND Active = 1
+            ORDER BY FirstName, LastName
+        """)
+        professors = cursor.fetchall()
+        return jsonify({'professors': professors}), 200
+    except mysql.connector.Error as err:
+        print(f"Error fetching professors: {err}")
+        return jsonify({'message': 'Failed to fetch professors'}), 500
+
+# Update the existing admin_create_course route
 @app.route('/admin/courses/create', methods=['POST'])
 @login_required
 def admin_create_course():
     """Create new courses and assign professors."""
     if session.get('role') != 'admin':
-        return jsonify({'message': 'Only admins can access this route'}), 403
-
-    if 'user_id' not in session or session.get('role') != 'admin':
-        return jsonify({'message': 'Unauthorized'}), 401
+        return jsonify({'message': 'Only admins can create courses'}), 403
 
     data = request.get_json()
-    course_name = data.get('course_name')
-    course_code = data.get('course_code')
-    instructor_id = data.get('instructor_id')  # Admin selects professor
-    year = data.get('year')
-    semester = data.get('semester')
+    required_fields = ['course_name', 'course_code', 'instructor_id', 'year', 'semester']
+    
+    if not all(field in data for field in required_fields):
+        return jsonify({
+            'success': False,
+            'message': 'Missing required fields'
+        }), 400
 
-    if not all([course_name, course_code, instructor_id, year, semester]):
-        return jsonify({'message': 'Missing required fields'}), 400
+    # Validate semester is between 1 and 8
+    try:
+        semester = int(data['semester'])
+        if not 1 <= semester <= 8:
+            return jsonify({
+                'success': False,
+                'message': 'Semester must be between 1 and 8'
+            }), 400
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'message': 'Invalid semester value'
+        }), 400
 
     cursor = mydb.cursor(dictionary=True)
     try:
-        # Verify if selected instructor is actually a professor
-        cursor.execute("SELECT Role FROM User WHERE UserID = %s", (instructor_id,))
-        user = cursor.fetchone()
-        if not user or user['Role'] != 'professor':
-            return jsonify({'message': 'Selected user is not a professor'}), 400
+        # Verify if selected instructor exists and is a professor
+        cursor.execute("""
+            SELECT UserID, Role 
+            FROM User 
+            WHERE UserID = %s AND Role = 'professor' AND Active = 1
+        """, (data['instructor_id'],))
+        
+        if not cursor.fetchone():
+            return jsonify({
+                'success': False,
+                'message': 'Selected instructor is not valid'
+            }), 400
 
+        # Create the course
         cursor.execute("""
             INSERT INTO Course (CourseName, CourseCode, InstructorID, Year, Semester) 
             VALUES (%s, %s, %s, %s, %s)
-        """, (course_name, course_code, instructor_id, year, semester))
+        """, (
+            data['course_name'],
+            data['course_code'],
+            data['instructor_id'],
+            data['year'],
+            semester  # Now using the validated integer value
+        ))
+        
         mydb.commit()
-        return jsonify({'message': 'Course created successfully', 'course_id': cursor.lastrowid}), 201
+        
+        return jsonify({
+            'success': True,
+            'message': 'Course created successfully',
+            'course_id': cursor.lastrowid
+        }), 201
+
     except mysql.connector.Error as err:
         print(f"Error creating course: {err}")
-        return jsonify({'message': 'Failed to create course'}), 500
+        return jsonify({
+            'success': False,
+            'message': 'Failed to create course'
+        }), 500
 
 @app.route('/admin/enrollment/approve/<int:request_id>', methods=['POST'])
 @login_required

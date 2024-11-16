@@ -352,7 +352,7 @@
                 <div class="form-group">
                     <label for="instructor">Instructor</label>
                     <select id="instructor" name="instructor_id" required>
-                        <!-- Instructors will be populated here -->
+                        <option value="">Select an instructor</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -362,9 +362,15 @@
                 <div class="form-group">
                     <label for="semester">Semester</label>
                     <select id="semester" name="semester" required>
-                        <option value="Fall">Fall</option>
-                        <option value="Spring">Spring</option>
-                        <option value="Summer">Summer</option>
+                        <option value="">Select semester</option>
+                        <option value="1">Semester 1</option>
+                        <option value="2">Semester 2</option>
+                        <option value="3">Semester 3</option>
+                        <option value="4">Semester 4</option>
+                        <option value="5">Semester 5</option>
+                        <option value="6">Semester 6</option>
+                        <option value="7">Semester 7</option>
+                        <option value="8">Semester 8</option>
                     </select>
                 </div>
                 <button type="submit" class="btn btn-primary">Create Course</button>
@@ -412,6 +418,9 @@
 
         function openModal(modalId) {
             document.getElementById(modalId).style.display = 'block';
+            if (modalId === 'createCourseModal') {
+                loadProfessors();
+            }
         }
 
         function closeModal(modalId) {
@@ -422,18 +431,30 @@
         document.getElementById('createCourseForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            const formData = new FormData(this);
+            const formData = {
+                course_name: document.getElementById('courseName').value,
+                course_code: document.getElementById('courseCode').value,
+                instructor_id: document.getElementById('instructor').value,
+                year: document.getElementById('year').value,
+                semester: document.getElementById('semester').value
+            };
+
             fetch('/admin/courses/create', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
             })
             .then(response => response.json())
             .then(data => {
-                if (data.message === 'Course created successfully') {
+                if (data.success) {
                     closeModal('createCourseModal');
                     fetchDashboardData();
+                    alert('Course created successfully');
+                } else {
+                    alert(data.message || 'Failed to create course');
                 }
-                alert(data.message);
             })
             .catch(error => {
                 console.error('Error:', error);
@@ -492,6 +513,23 @@
                     <td>${new Date(activity.timestamp).toLocaleString()}</td>
                 </tr>
             `).join('');
+        }
+
+        function loadProfessors() {
+            fetch('/api/professors')
+                .then(response => response.json())
+                .then(data => {
+                    const instructorSelect = document.getElementById('instructor');
+                    instructorSelect.innerHTML = '<option value="">Select an instructor</option>';
+                    data.professors.forEach(professor => {
+                        instructorSelect.innerHTML += `
+                            <option value="${professor.UserID}">
+                                ${professor.FirstName} ${professor.LastName} (${professor.Email})
+                            </option>
+                        `;
+                    });
+                    })
+                .catch(error => console.error('Error:', error));
         }
     </script>
 </body>
