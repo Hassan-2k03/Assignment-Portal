@@ -452,91 +452,91 @@ def delete_course(course_id):
             'message': 'Failed to delete course'
         }), 500
 
+@app.route('/admin/courses/<int:course_id>/edit', methods=['POST'])
+@login_required
+def edit_course(course_id):
+    """Edit existing course details."""
+    if session.get('role') != 'admin':
+        return jsonify({
+            'success': False,
+            'message': 'Only admins can edit courses'
+        }), 403
+
+    data = request.get_json()
+    required_fields = ['course_name', 'course_code', 'instructor_id', 'year', 'semester']
+    
+    if not all(field in data for field in required_fields):
+        return jsonify({
+            'success': False,
+            'message': 'Missing required fields'
+        }), 400
+
+    # Validate semester is between 1 and 8
+    try:
+        semester = int(data['semester'])
+        if not 1 <= semester <= 8:
+            return jsonify({
+                'success': False,
+                'message': 'Semester must be between 1 and 8'
+            }), 400
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'message': 'Invalid semester value'
+        }), 400
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # Verify if selected instructor exists and is a professor
+        cursor.execute("""
+            SELECT UserID, Role 
+            FROM User 
+            WHERE UserID = %s AND Role = 'professor' AND Active = 1
+        """, (data['instructor_id'],))
+        
+        if not cursor.fetchone():
+            return jsonify({
+                'success': False,
+                'message': 'Selected instructor is not valid'
+            }), 400
+
+        # Update the course
+        cursor.execute("""
+            UPDATE Course 
+            SET CourseName = %s, 
+                CourseCode = %s, 
+                InstructorID = %s, 
+                Year = %s, 
+                Semester = %s
+            WHERE CourseID = %s
+        """, (
+            data['course_name'],
+            data['course_code'],
+            data['instructor_id'],
+            data['year'],
+            semester,
+            course_id
+        ))
+        
+        mydb.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Course updated successfully'
+        }), 200
+
+    except mysql.connector.Error as err:
+        print(f"Error updating course: {err}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to update course'
+        }), 500
+
 # ============ Professor Routes ============
 @app.route('/professor-dashboard')
 @login_required
 def professor_dashboard():
     """Professor dashboard data API endpoint."""
-    if session.get('role') != 'professor':
-        return jsonify({'message': 'Only professors can access this route'}), 403
-
-    if 'user_id' not in session or session.get('role') != 'professor':
-        return jsonify({'message': 'Unauthorized'}), 401
-
-    cursor = mydb.cursor(dictionary=True)
-    try:
-        # Fetch professor's courses
-        cursor.execute("""
-            SELECT c.*, 
-                   COUNT(DISTINCT a.AssignmentID) as assignment_count,
-                   COUNT(DISTINCT e.StudentID) as enrolled_students
-            FROM Course c
-            LEFT JOIN Assignment a ON c.CourseID = a.CourseID
-            LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
-            WHERE c.InstructorID = %s
-            GROUP BY c.CourseID
-        """, (session['user_id'],))
-        courses = cursor.fetchall()
-
-        return jsonify({
-            'courses': courses,
-            'professor_name': session.get('username'),
-        }), 200
-    except mysql.connector.Error as err:
-        return jsonify({'message': 'Error fetching dashboard data'}), 500
-
-@app.route('/courses/<int:course_id>/assignments', methods=['POST'])
-@login_required
-def create_assignment(course_id):
-    """Create new assignments for a course."""
-    if session.get('role') != 'professor':
-        return jsonify({'message': 'Only professors can access this route'}), 403
-
-    if 'user_id' not in session:
-        return jsonify({'message': 'Unauthorized'}), 401
-
-    data = request.get_json()
-    title = data.get('title')
-    description = data.get('description')
-    due_date_str = data.get('due_date')  # Get due_date as a string
-
-    # Data validation
-    if not all([title, due_date_str]):
-        return jsonify({'message': 'Missing required fields'}), 400
-
-    # Parse the due_date string into a datetime object (compatible with MySQL DATETIME)
-    try:
-        due_date = datetime.datetime.strptime(due_date_str, '%Y-%m-%d %H:%M:%S')  # Example format: '2024-12-31 23:59:59'
-    except ValueError:
-        return jsonify({'message': 'Invalid due_date format. Please use YYYY-MM-DD HH:MM:SS'}), 400
-
-    # Get the role of the logged-in user
-    cursor = mydb.cursor(dictionary=True)
-    try:
-        cursor.execute("SELECT Role FROM User WHERE UserID = %s", (session['user_id'],))
-        user = cursor.fetchone()
-        if user and user['Role'] == 'professor':
-            # Only allow professors to create assignments
-            cursor.execute("INSERT INTO Assignment (CourseID, Title, Description, DueDate) VALUES (%s, %s, %s, %s)",
-                           (course_id, title, description, due_date))  # Use the parsed due_date object
-            mydb.commit()
-            return jsonify({'message': 'Assignment created successfully'}), 201
-        else:
-            return jsonify({'message': 'Only professors can create assignments'}), 403  # Forbidden
-    except mysql.connector.Error as err:
-        print(f"Error creating assignment: {err}")
-        return jsonify({'message': 'Failed to create assignment'}), 500
-
-@app.route('/assignments/<int:assignment_id>/submissions', methods=['GET'])
-@login_required
-def get_assignment_submissions(assignment_id):
-    """View all submissions for an assignment."""
-    if session.get('role') != 'professor':
-        return jsonify({'message': 'Only professors can access this route'}), 403
-
-    if 'user_id' not in session or session.get('role') != 'professor':
-        return jsonify({'message': 'Unauthorized'}), 401
-
     cursor = mydb.cursor(dictionary=True)
     try:
         # Verify professor teaches this course

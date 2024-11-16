@@ -378,6 +378,50 @@
         </div>
     </div>
 
+    <!-- Add this after your existing createCourseModal div -->
+    <div id="editCourseModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('editCourseModal')">&times;</span>
+            <h2>Edit Course</h2>
+            <form id="editCourseForm">
+                <input type="hidden" id="editCourseId">
+                <div class="form-group">
+                    <label for="editCourseName">Course Name</label>
+                    <input type="text" id="editCourseName" name="course_name" required>
+                </div>
+                <div class="form-group">
+                    <label for="editCourseCode">Course Code</label>
+                    <input type="text" id="editCourseCode" name="course_code" required>
+                </div>
+                <div class="form-group">
+                    <label for="editInstructor">Instructor</label>
+                    <select id="editInstructor" name="instructor_id" required>
+                        <option value="">Select an instructor</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="editYear">Year</label>
+                    <input type="number" id="editYear" name="year" required>
+                </div>
+                <div class="form-group">
+                    <label for="editSemester">Semester</label>
+                    <select id="editSemester" name="semester" required>
+                        <option value="">Select semester</option>
+                        <option value="1">Semester 1</option>
+                        <option value="2">Semester 2</option>
+                        <option value="3">Semester 3</option>
+                        <option value="4">Semester 4</option>
+                        <option value="5">Semester 5</option>
+                        <option value="6">Semester 6</option>
+                        <option value="7">Semester 7</option>
+                        <option value="8">Semester 8</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Update Course</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         // Fetch dashboard data on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -558,9 +602,69 @@
         }
 
         function editCourse(courseId) {
-            // Implement course editing functionality
-            console.log('Editing course:', courseId);
+            fetch(`/api/courses/${courseId}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('editCourseId').value = courseId;
+                    document.getElementById('editCourseName').value = data.name;
+                    document.getElementById('editCourseCode').value = data.code;
+                    document.getElementById('editYear').value = data.year;
+                    document.getElementById('editSemester').value = data.semester;
+                    
+                    // Load professors and set the selected instructor
+                    fetch('/api/professors')
+                        .then(response => response.json())
+                        .then(profData => {
+                            const instructorSelect = document.getElementById('editInstructor');
+                            instructorSelect.innerHTML = '<option value="">Select an instructor</option>';
+                            profData.professors.forEach(professor => {
+                                instructorSelect.innerHTML += `
+                                    <option value="${professor.UserID}" ${professor.UserID === data.instructor_id ? 'selected' : ''}>
+                                        ${professor.FirstName} ${professor.LastName} (${professor.Email})
+                                    </option>
+                                `;
+                            });
+                        });
+                    
+                    openModal('editCourseModal');
+                })
+                .catch(error => console.error('Error:', error));
         }
+
+        document.getElementById('editCourseForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const courseId = document.getElementById('editCourseId').value;
+            const formData = {
+                course_name: document.getElementById('editCourseName').value,
+                course_code: document.getElementById('editCourseCode').value,
+                instructor_id: document.getElementById('editInstructor').value,
+                year: document.getElementById('editYear').value,
+                semester: document.getElementById('editSemester').value
+            };
+
+            fetch(`/admin/courses/${courseId}/edit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeModal('editCourseModal');
+                    fetchDashboardData();
+                    alert('Course updated successfully');
+                } else {
+                    alert(data.message || 'Failed to update course');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while updating the course');
+            });
+        });
 
         function viewEnrollments(courseId) {
             // Implement enrollment viewing functionality
@@ -589,4 +693,4 @@
         }
     </script>
 </body>
-</html>
+</html>  
