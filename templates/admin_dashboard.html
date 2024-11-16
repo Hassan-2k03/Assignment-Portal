@@ -198,6 +198,51 @@
             border: 1px solid #ddd;
             border-radius: 4px;
         }
+
+        .stat-card {
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-trend {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        .number {
+            animation: countUp 0.5s ease-out;
+        }
+
+        @keyframes countUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .number-changing {
+            animation: numberUpdate 0.5s ease-out;
+        }
+
+        @keyframes numberUpdate {
+            0% {
+                transform: scale(1.1);
+                color: #2ecc71;
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
     </style>
 </head>
 <body>
@@ -230,18 +275,22 @@
                 <div class="stat-card">
                     <h3>Total Students</h3>
                     <div class="number" id="studentCount">0</div>
+                    <p class="stat-trend">Currently Active</p>
                 </div>
                 <div class="stat-card">
                     <h3>Total Professors</h3>
                     <div class="number" id="professorCount">0</div>
+                    <p class="stat-trend">Faculty Members</p>
                 </div>
                 <div class="stat-card">
                     <h3>Total Courses</h3>
-                    <div class="number" id="courseCount">0</div>
+                    <div class="number" id="activeCourses">0</div>
+                    <p class="stat-trend">Registered Courses</p>
                 </div>
                 <div class="stat-card">
                     <h3>Active Assignments</h3>
-                    <div class="number" id="assignmentCount">0</div>
+                    <div class="number" id="activeAssignments">0</div>
+                    <p class="stat-trend">Pending Due Dates</p>
                 </div>
             </div>
 
@@ -397,6 +446,52 @@
             if (event.target.className === 'modal') {
                 event.target.style.display = 'none';
             }
+        }
+
+        // Update dashboard data every 5 seconds
+        function updateDashboardData() {
+            fetch('/admin-dashboard')
+                .then(response => response.json())
+                .then(data => {
+                    // Update statistics with animation
+                    updateStatWithAnimation('studentCount', data.stats.student_count);
+                    updateStatWithAnimation('professorCount', data.stats.professor_count);
+                    updateStatWithAnimation('activeCourses', data.stats.active_courses);
+                    updateStatWithAnimation('activeAssignments', data.stats.active_assignments);
+
+                    // Update activities table
+                    updateActivities(data.recent_activities);
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function updateStatWithAnimation(elementId, newValue) {
+            const element = document.getElementById(elementId);
+            const currentValue = parseInt(element.textContent);
+            
+            if (currentValue !== newValue) {
+                element.classList.add('number-changing');
+                element.textContent = newValue;
+                
+                setTimeout(() => {
+                    element.classList.remove('number-changing');
+                }, 500);
+            }
+        }
+
+        // Call immediately and set interval
+        updateDashboardData();
+        setInterval(updateDashboardData, 5000); // Update every 5 seconds
+
+        function updateActivities(activities) {
+            const tbody = document.querySelector('#activitiesTable tbody');
+            tbody.innerHTML = activities.map(activity => `
+                <tr>
+                    <td>${activity.type}</td>
+                    <td>${activity.detail}</td>
+                    <td>${new Date(activity.timestamp).toLocaleString()}</td>
+                </tr>
+            `).join('');
         }
     </script>
 </body>

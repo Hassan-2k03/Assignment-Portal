@@ -193,38 +193,52 @@ def admin_dashboard():
     if session.get('role') != 'admin':
         return jsonify({'message': 'Only admins can access this route'}), 403
 
-    if 'user_id' not in session or session.get('role') != 'admin':
-        return jsonify({'message': 'Unauthorized'}), 401
-
     cursor = mydb.cursor(dictionary=True)
     try:
-        # Get system statistics
+        # Updated statistics query to show all courses
         cursor.execute("""
             SELECT 
-                (SELECT COUNT(*) FROM User WHERE Role = 'student') as student_count,
-                (SELECT COUNT(*) FROM User WHERE Role = 'professor') as professor_count,
-                (SELECT COUNT(*) FROM Course) as course_count,
-                (SELECT COUNT(*) FROM Assignment) as assignment_count
+                (SELECT COUNT(*) FROM User WHERE Role = 'student' AND Active = 1) as student_count,
+                (SELECT COUNT(*) FROM User WHERE Role = 'professor' AND Active = 1) as professor_count,
+                (SELECT COUNT(*) FROM Course) as active_courses,
+                (SELECT COUNT(*) FROM Assignment 
+                 WHERE DueDate > CURRENT_TIMESTAMP 
+                 AND Status = 'active') as active_assignments
         """)
         stats = cursor.fetchone()
 
         # Get recent activities
         cursor.execute("""
-            (SELECT 'New User' as type, Username as detail, CreatedAt as timestamp
-             FROM User ORDER BY UserID DESC LIMIT 5)
+            SELECT * FROM (
+                SELECT 'New Login' as type, 
+                       CONCAT(FirstName, ' ', LastName, ' (', Role, ')') as detail,
+                       LastLogin as timestamp
+                FROM User 
+                WHERE LastLogin IS NOT NULL
+                ORDER BY LastLogin DESC LIMIT 5
+            ) as logins
             UNION ALL
-            (SELECT 'New Course' as type, CourseName as detail, CreatedAt as timestamp
-             FROM Course ORDER BY CourseID DESC LIMIT 5)
-            ORDER BY timestamp DESC LIMIT 10
+            SELECT * FROM (
+                SELECT 'New Enrollment' as type,
+                       CONCAT(u.FirstName, ' ', u.LastName, ' enrolled in ', c.CourseName) as detail,
+                       e.EnrollmentDate as timestamp
+                FROM Enrollment e
+                JOIN User u ON e.StudentID = u.UserID
+                JOIN Course c ON e.CourseID = c.CourseID
+                ORDER BY e.EnrollmentDate DESC LIMIT 5
+            ) as enrollments
+            ORDER BY timestamp DESC
+            LIMIT 10
         """)
-        recent_activities = cursor.fetchall()
+        activities = cursor.fetchall()
 
         return jsonify({
             'stats': stats,
-            'recent_activities': recent_activities,
+            'recent_activities': activities,
             'admin_name': session.get('username')
         }), 200
     except mysql.connector.Error as err:
+        print(f"Error fetching dashboard data: {err}")
         return jsonify({'message': 'Error fetching dashboard data'}), 500
 
 @app.route('/admin/courses/create', methods=['POST'])

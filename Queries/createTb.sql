@@ -148,3 +148,9 @@ CREATE TABLE EnrollmentRequest (
     UNIQUE KEY unique_request (StudentID, CourseID, Status)
 );
 
+ALTER TABLE User 
+ADD COLUMN Active BOOLEAN DEFAULT 1,
+ADD COLUMN LastLogin DATETIME;
+
+ALTER TABLE Assignment
+ADD COLUMN Status VARCHAR(20) DEFAULT 'active';
