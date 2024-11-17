@@ -862,12 +862,9 @@ def student_dashboard():
     if session.get('role') != 'student':
         return jsonify({'message': 'Only students can access this route'}), 403
 
-    if 'user_id' not in session or session.get('role') != 'student':
-        return jsonify({'message': 'Unauthorized'}), 401
-
     cursor = mydb.cursor(dictionary=True)
     try:
-        # Fetch enrolled courses and available courses
+        # Get enrolled courses and available courses
         cursor.execute("""
             SELECT c.*, 
                    u.FirstName as instructor_name,
@@ -878,12 +875,41 @@ def student_dashboard():
         """, (session['user_id'],))
         courses = cursor.fetchall()
 
+        # Get assignments for enrolled courses
+        cursor.execute("""
+            SELECT 
+                a.AssignmentID,
+                a.Title,
+                a.Description,
+                a.DueDate,
+                a.FilePath,
+                c.CourseName,
+                c.CourseCode,
+                COALESCE(s.SubmissionPath, NULL) as submission,
+                COALESCE(s.Grade, NULL) as grade,
+                CASE 
+                    WHEN s.SubmissionPath IS NOT NULL THEN 'submitted'
+                    WHEN a.DueDate < NOW() THEN 'late'
+                    ELSE 'pending'
+                END as status
+            FROM Assignment a
+            JOIN Course c ON a.CourseID = c.CourseID
+            JOIN Enrollment e ON c.CourseID = e.CourseID
+            LEFT JOIN Submission s ON a.AssignmentID = s.AssignmentID 
+                AND s.StudentID = %s
+            WHERE e.StudentID = %s AND e.Status = 'active'
+            ORDER BY a.DueDate ASC
+        """, (session['user_id'], session['user_id']))
+        assignments = cursor.fetchall()
+
         return jsonify({
             'enrolled_courses': [c for c in courses if c['is_enrolled']],
             'available_courses': [c for c in courses if not c['is_enrolled']],
+            'upcoming_assignments': assignments,
             'student_name': session.get('username'),
         }), 200
     except mysql.connector.Error as err:
+        print(f"Error fetching dashboard data: {err}")
         return jsonify({'message': 'Error fetching dashboard data'}), 500
 
 @app.route('/assignments/<int:assignment_id>/submit', methods=['POST'])

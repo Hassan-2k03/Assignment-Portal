@@ -409,9 +409,11 @@
             fetch('/student-dashboard')
                 .then(response => response.json())
                 .then(data => {
+                    console.log('Dashboard data:', data); // Debug line
                     document.getElementById('studentName').textContent = `Welcome, ${data.student_name}`;
                     displayEnrolledCourses(data.enrolled_courses);
                     displayAvailableCourses(data.available_courses);
+                    displayUpcomingAssignments(data.upcoming_assignments);
                 })
                 .catch(error => console.error('Error:', error));
         }
@@ -452,6 +454,40 @@
                         </div>
                     `;
                 }).join('');
+        }
+
+        function displayUpcomingAssignments(assignments) {
+            const tbody = document.getElementById('assignmentsTable').querySelector('tbody');
+            if (!assignments || assignments.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center">No assignments available</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = assignments.map(assignment => {
+                const dueDate = new Date(assignment.DueDate);
+                const statusClasses = {
+                    'submitted': 'status-submitted',
+                    'late': 'status-late',
+                    'pending': 'status-pending'
+                };
+
+                return `
+                    <tr>
+                        <td>${assignment.CourseCode} - ${assignment.CourseName}</td>
+                        <td>${assignment.Title}</td>
+                        <td>${dueDate.toLocaleString()}</td>
+                        <td><span class="status-badge ${statusClasses[assignment.status]}">${assignment.status}</span></td>
+                        <td>
+                            ${assignment.status === 'submitted' 
+                                ? `<span class="grade">${assignment.grade || 'Pending Grade'}</span>`
+                                : `<button class="btn btn-primary" onclick="submitAssignment(${assignment.AssignmentID})">
+                                    Submit
+                                   </button>`
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         function setupEventListeners() {
@@ -527,4 +563,4 @@
         }
     </script>
 </body>
-</html>  
+</html>
