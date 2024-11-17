@@ -313,6 +313,55 @@
             gap: 1rem;
             margin-top: 1rem;
         }
+
+        /* File Upload Styles */
+        .file-upload {
+            border: 2px dashed #3498db;
+            padding: 2rem;
+            text-align: center;
+            margin: 1rem 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-upload.drag-over {
+            background-color: #f0f9ff;
+            border-color: #2ecc71;
+        }
+
+        .file-upload p {
+            margin: 0;
+            color: #666;
+        }
+
+        .file-info {
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: #f0f0f0;
+            margin-top: 1rem;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress {
+            height: 100%;
+            background: #2ecc71;
+            width: 0;
+            transition: width 0.3s ease;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            margin-top: 0.5rem;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -389,13 +438,18 @@
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Submit Assignment</h2>
-            <form id="submissionForm">
-                <div class="form-group">
-                    <label for="assignmentFile">Assignment File</label>
-                    <input type="file" id="assignmentFile" name="file" required>
+            <div class="file-upload" id="fileDropzone">
+                <p>Drag and drop your file here or click to select</p>
+                <input type="file" id="assignmentFile" name="file" hidden>
+            </div>
+            <div class="file-info" id="fileInfo">
+                <p>Selected file: <span id="fileName">No file selected</span></p>
+                <div class="progress-bar">
+                    <div class="progress" id="uploadProgress"></div>
                 </div>
-                <button type="submit" class="btn btn-primary">Submit Assignment</button>
-            </form>
+            </div>
+            <p class="error-message" id="errorMessage"></p>
+            <button type="button" class="btn btn-primary" id="submitButton" disabled>Submit Assignment</button>
         </div>
     </div>
 
@@ -561,6 +615,156 @@
                 alert('An error occurred while trying to exit the course');
             });
         }
+
+        function submitAssignment(assignmentId) {
+            currentAssignmentId = assignmentId;
+            // Reset the modal state
+            const fileInput = document.getElementById('assignmentFile');
+            const dropzone = document.getElementById('fileDropzone');
+            const fileInfo = document.getElementById('fileInfo');
+            const errorMessage = document.getElementById('errorMessage');
+            const submitButton = document.getElementById('submitButton');
+            
+            // Clear previous file
+            fileInput.value = '';
+            // Reset dropzone text
+            dropzone.querySelector('p').textContent = 'Drag and drop your file here or click to select';
+            // Hide info and error sections
+            fileInfo.style.display = 'none';
+            errorMessage.style.display = 'none';
+            // Disable submit button until file is selected
+            submitButton.disabled = true;
+            
+            // Show the modal
+            const modal = document.getElementById('submissionModal');
+            modal.style.display = 'block';
+        }
+
+        function setupFileUpload() {
+            const dropzone = document.getElementById('fileDropzone');
+            const fileInput = document.getElementById('assignmentFile');
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const submitButton = document.getElementById('submitButton');
+            const errorMessage = document.getElementById('errorMessage');
+
+            // Add click event to dropzone
+            dropzone.onclick = () => fileInput.click();
+
+            // File input change handler
+            fileInput.onchange = (e) => {
+                if (e.target.files.length) {
+                    handleFile(e.target.files[0]);
+                }
+            };
+
+            // Drag and drop handlers
+            dropzone.ondragover = (e) => {
+                e.preventDefault();
+                dropzone.classList.add('drag-over');
+            };
+
+            dropzone.ondragleave = () => {
+                dropzone.classList.remove('drag-over');
+            };
+
+            dropzone.ondrop = (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('drag-over');
+                if (e.dataTransfer.files.length) {
+                    handleFile(e.dataTransfer.files[0]);
+                }
+            };
+
+            // Submit button click handler
+            submitButton.onclick = () => {
+                if (!fileInput.files.length) return;
+                
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+
+                // Show progress bar
+                const progress = document.getElementById('uploadProgress');
+                progress.style.width = '0%';
+                fileInfo.style.display = 'block';
+
+                fetch(`/assignments/${currentAssignmentId}/submit`, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        closeModal('submissionModal');
+                        fetchDashboardData();
+                        alert('Assignment submitted successfully!');
+                    } else {
+                        throw new Error(data.message || 'Failed to submit assignment');
+                    }
+                })
+                .catch(error => {
+                    errorMessage.textContent = error.message;
+                    errorMessage.style.display = 'block';
+                });
+            };
+
+            function handleFile(file) {
+                // File validation
+                const maxSize = 10 * 1024 * 1024; // 10MB
+                const allowedTypes = [
+                    'application/pdf',
+                    'application/msword',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'text/plain'
+                ];
+
+                if (file.size > maxSize) {
+                    errorMessage.textContent = 'File size exceeds 10MB limit';
+                    errorMessage.style.display = 'block';
+                    submitButton.disabled = true;
+                    return;
+                }
+
+                if (!allowedTypes.includes(file.type)) {
+                    errorMessage.textContent = 'Invalid file type. Please upload PDF, DOC, DOCX, or TXT files.';
+                    errorMessage.style.display = 'block';
+                    submitButton.disabled = true;
+                    return;
+                }
+
+                // Update UI for valid file
+                fileInfo.style.display = 'block';
+                fileName.textContent = file.name;
+                submitButton.disabled = false;
+                errorMessage.style.display = 'none';
+                dropzone.querySelector('p').textContent = `Selected: ${file.name}`;
+            }
+        }
+
+        // Initialize file upload handling when document is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            setupFileUpload();
+        });
+
+        // Close modal function
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Close modal when clicking on X or outside
+        document.querySelectorAll('.close').forEach(closeBtn => {
+            closeBtn.addEventListener('click', () => {
+                closeBtn.closest('.modal').style.display = 'none';
+            });
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+            }
+        });
+
+        let currentAssignmentId = null;  // To store the current assignment being submitted
     </script>
 </body>
-</html>
+</html>  
