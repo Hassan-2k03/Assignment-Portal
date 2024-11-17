@@ -3,7 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import mysql.connector
 from config import (SECRET_KEY, DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD, 
-                   DATABASE_NAME, UPLOAD_FOLDER, ALLOWED_EXTENSIONS)
+                   DATABASE_NAME, UPLOAD_FOLDER, ALLOWED_EXTENSIONS, REDIRECT_URI)
 import datetime
 import os
 from functools import wraps
@@ -13,6 +13,8 @@ from urllib.parse import urlencode
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY  # Set a strong secret key!
+app.config['UPLOAD_FOLDER'] = r'C:\Users\hassa\OneDrive\Documents\Academics\Semester 5\Assignment Portal\uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
 # Database connection 
 mydb = mysql.connector.connect(
@@ -266,6 +268,12 @@ def logout():
     """End user session and logout."""
     session.clear()
     return redirect(url_for('login_page'))
+
+@app.route('/logout/callback')
+def logout_callback():
+    """Handle Microsoft front-channel logout callback."""
+    session.clear()
+    return '', 200
 
 # Add error handlers
 @app.errorhandler(404)
@@ -1325,5 +1333,55 @@ def get_course_full_details(course_id):
         print(f"Error fetching course details: {err}")
         return jsonify({'message': 'Failed to fetch course details'}), 500
 
+@app.route('/connect/onedrive')
+@login_required
+def connect_onedrive():
+    """Initiate OneDrive connection."""
+    msal_app = ConfidentialClientApplication(
+        ONEDRIVE_CLIENT_ID,
+        authority=OAUTH_AUTHORITY_URL,
+        client_credential=ONEDRIVE_CLIENT_SECRET,
+    )
+    
+    auth_url = msal_app.get_authorization_request_url(
+        ONEDRIVE_SCOPES,
+        redirect_uri=REDIRECT_URI,  # Use the config value
+        state=session['user_id']
+    )
+    return redirect(auth_url)
+
+@app.route('/auth/callback')
+def auth_callback():
+    """Handle OAuth callback from Microsoft."""
+    if 'error' in request.args:
+        return f"Error: {request.args['error']}"
+        
+    if 'code' in request.args:
+        msal_app = ConfidentialClientApplication(
+            ONEDRIVE_CLIENT_ID,
+            authority=OAUTH_AUTHORITY_URL,
+            client_credential=ONEDRIVE_CLIENT_SECRET,
+        )
+        
+        result = msal_app.acquire_token_by_authorization_code(
+            request.args['code'],
+            ONEDRIVE_SCOPES,
+            redirect_uri=REDIRECT_URI  # Use the config value
+        )
+        
+        if 'access_token' in result:
+            # Store tokens securely - consider using a database
+            session['onedrive_token'] = result['access_token']
+            session['onedrive_refresh_token'] = result.get('refresh_token')
+            
+            return redirect(url_for('index'))
+            
+        return f"Error: {result.get('error')}"
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(
+        host='0.0.0.0',  # Makes the server accessible from other devices
+        port=5000,       # Specify port
+        debug=True,      # Enable debug mode
+        ssl_context='adhoc'  # Enable HTTPS
+    )

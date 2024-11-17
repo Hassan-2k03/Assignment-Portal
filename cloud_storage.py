@@ -1,12 +1,13 @@
 from O365 import Account
-from O365 import Account
-from config import ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET, ONEDRIVE_BASE_PATH
+from config import ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET, ONEDRIVE_BASE_PATH, ONEDRIVE_SCOPES
 import os
 
 class CloudStorage:
     def __init__(self):
+        # Update initialization with scopes
         self.credentials = (ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET)
-        self.account = Account(self.credentials)
+        self.scopes = ONEDRIVE_SCOPES
+        self.account = Account(self.credentials, scopes=self.scopes)
         
         # Authenticate on first use
         if not self.account.is_authenticated:
