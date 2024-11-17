@@ -451,17 +451,6 @@
                 </div>
             </div>
 
-            <!-- Course Management Section -->
-            <div class="dashboard-section">
-                <div class="section-header">
-                    <h2>My Courses</h2>
-                    <button class="btn btn-primary" onclick="openModal('createAssignmentModal')">Create Assignment</button>
-                </div>
-                <div id="coursesList">
-                    <!-- Courses will be populated here -->
-                </div>
-            </div>
-
             <!-- Recent Submissions Section -->
             <div class="dashboard-section">
                 <div class="section-header">
@@ -681,8 +670,8 @@
                         <button class="btn btn-primary" onclick="viewCourseDetails(${course.CourseID})">
                             View Details
                         </button>
-                        <button class="btn btn-primary" onclick="createAssignment(${course.CourseID})">
-                            New Assignment
+                        <button class="btn btn-primary" onclick="openAssignmentModal(${course.CourseID})">
+                            Upload Assignment
                         </button>
                     </div>
                 </div>
