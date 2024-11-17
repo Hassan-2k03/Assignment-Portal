@@ -10,7 +10,7 @@ from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY  # Set a strong secret key!
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['UPLOAD_FOLDER'] = r'C:\Users\hassa\OneDrive\Documents\Academics\Semester 5\Assignment Portal\uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
 # Database connection 
@@ -93,6 +93,100 @@ def student_dashboard_page():
     if session.get('role') != 'student':
         return redirect(url_for('index'))
     return render_template('student_dashboard.html')
+
+@app.route('/api/assignments/upload', methods=['POST'])
+@login_required
+def upload_assignment():
+    """Handle assignment file uploads from professors."""
+    if session.get('role') != 'professor':
+        return jsonify({'success': False, 'message': 'Only professors can upload assignments'}), 403
+
+    try:
+        # Verify form data
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'message': 'No file uploaded'}), 400
+            
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No file selected'}), 400
+
+        title = request.form.get('title')
+        description = request.form.get('description')
+        due_date = request.form.get('due_date')
+        course_id = request.form.get('course_id')
+
+        if not all([title, description, due_date, course_id]):
+            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
+
+        cursor = mydb.cursor(dictionary=True)
+        
+        # Verify professor teaches this course
+        cursor.execute("""
+            SELECT 1 FROM Course 
+            WHERE CourseID = %s AND InstructorID = %s
+        """, (course_id, session['user_id']))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'message': 'You can only upload assignments to your courses'}), 403
+
+        if file and allowed_file(file.filename):
+            try:
+                # Create assignment directory with unique identifier
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                assignment_dir = os.path.join(
+                    app.config['UPLOAD_FOLDER'], 
+                    f'course_{course_id}', 
+                    'assignments',
+                    f'{timestamp}_{safe_title}'
+                )
+                os.makedirs(assignment_dir, exist_ok=True)
+                
+                # Secure filename and save file
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(assignment_dir, filename)
+                file.save(file_path)
+
+                # Create assignment record
+                cursor.execute("""
+                    INSERT INTO Assignment (CourseID, Title, Description, DueDate, FilePath, CreatedBy, CreatedAt)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                """, (course_id, title, description, due_date, file_path, session['user_id']))
+                
+                mydb.commit()
+
+                # Create notification for enrolled students
+                cursor.execute("""
+                    INSERT INTO Notification (UserID, Message, Timestamp)
+                    SELECT e.StudentID, 
+                           CONCAT('New assignment posted in ', c.CourseName, ': ', %s),
+                           NOW()
+                    FROM Enrollment e
+                    JOIN Course c ON e.CourseID = c.CourseID
+                    WHERE e.CourseID = %s AND e.Status = 'active'
+                """, (title, course_id))
+                
+                mydb.commit()
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Assignment uploaded successfully',
+                    'assignment_id': cursor.lastrowid
+                }), 201
+            
+            except OSError as e:
+                print(f"OS error: {e}")
+                return jsonify({'success': False, 'message': 'Failed to save file'}), 500
+        
+        return jsonify({'success': False, 'message': 'Invalid file type'}), 400
+
+    except mysql.connector.Error as err:
+        print(f"Database error: {err}")
+        return jsonify({'success': False, 'message': 'Database error occurred'}), 500
+    except Exception as e:
+        print(f"Error uploading assignment: {e}")
+        return jsonify({'success': False, 'message': 'Failed to upload assignment'}), 500
+
 
 # ============ Common Routes ============
 # Modify existing register route to handle both form and API requests
@@ -669,6 +763,96 @@ def grade_submission(submission_id):
     except mysql.connector.Error as err:
         print(f"Error grading submission: {err}")
         return jsonify({'message': 'Failed to grade submission'}), 500
+
+@app.route('/api/assignments/<int:assignment_id>/delete', methods=['POST'])
+@login_required
+def delete_assignment(assignment_id):
+    """Delete an assignment and its associated files."""
+    if session.get('role') != 'professor':
+        return jsonify({
+            'success': False,
+            'message': 'Only professors can delete assignments'
+        }), 403
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # First verify the professor owns this assignment
+        cursor.execute("""
+            SELECT a.*, c.InstructorID 
+            FROM Assignment a
+            JOIN Course c ON a.CourseID = c.CourseID
+            WHERE a.AssignmentID = %s
+        """, (assignment_id,))
+        
+        assignment = cursor.fetchone()
+        if not assignment:
+            return jsonify({
+                'success': False,
+                'message': 'Assignment not found'
+            }), 404
+            
+        if assignment['InstructorID'] != session['user_id']:
+            return jsonify({
+                'success': False,
+                'message': 'You can only delete your own assignments'
+            }), 403
+
+        # Start transaction
+        cursor.execute("START TRANSACTION")
+        
+        try:
+            # Delete associated files if they exist
+            if assignment['FilePath'] and os.path.exists(assignment['FilePath']):
+                os.remove(assignment['FilePath'])
+            
+            # Delete submissions and their files
+            cursor.execute("""
+                SELECT SubmissionPath 
+                FROM Submission 
+                WHERE AssignmentID = %s
+            """, (assignment_id,))
+            
+            submissions = cursor.fetchall()
+            for submission in submissions:
+                if submission['SubmissionPath'] and os.path.exists(submission['SubmissionPath']):
+                    os.remove(submission['SubmissionPath'])
+
+            # Delete database records
+            cursor.execute("DELETE FROM Submission WHERE AssignmentID = %s", (assignment_id,))
+            cursor.execute("DELETE FROM Assignment WHERE AssignmentID = %s", (assignment_id,))
+            
+            # Create notifications for enrolled students
+            cursor.execute("""
+                INSERT INTO Notification (UserID, Message, Timestamp)
+                SELECT e.StudentID, 
+                    CONCAT('Assignment "', %s, '" has been deleted from the course'),
+                    NOW()
+                FROM Enrollment e
+                WHERE e.CourseID = %s
+            """, (assignment['Title'], assignment['CourseID']))
+
+            cursor.execute("COMMIT")
+            return jsonify({
+                'success': True,
+                'message': 'Assignment deleted successfully'
+            }), 200
+
+        except Exception as e:
+            cursor.execute("ROLLBACK")
+            raise e
+
+    except mysql.connector.Error as err:
+        print(f"Error deleting assignment: {err}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to delete assignment'
+        }), 500
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'An error occurred while deleting the assignment'
+        }), 500
 
 # ============ Student Routes ============
 @app.route('/student-dashboard')

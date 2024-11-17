@@ -592,6 +592,34 @@
         </div>
     </div>
 
+    <!-- Create Assignment Upload Modal -->
+    <div id="assignmentUploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('assignmentUploadModal')">&times;</span>
+            <h2>Upload New Assignment</h2>
+            <form id="assignmentUploadForm">
+                <input type="hidden" id="assignmentCourseId" name="course_id">
+                <div class="form-group">
+                    <label for="assignmentTitle">Assignment Title</label>
+                    <input type="text" id="assignmentTitle" name="title" required>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentDescription">Description</label>
+                    <textarea id="assignmentDescription" name="description" class="feedback-input" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentDueDate">Due Date</label>
+                    <input type="datetime-local" id="assignmentDueDate" name="due_date" required>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentFile">Assignment File</label>
+                    <input type="file" id="assignmentFile" name="file" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload Assignment</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             fetchProfessorDashboard();
@@ -609,35 +637,8 @@
                 .catch(error => console.error('Error:', error));
         }
 
-        function updateDashboardStats(data) {
-            document.getElementById('activeCourses').textContent = data.courses.length;
-            document.getElementById('totalStudents').textContent = data.courses.reduce((acc, course) => acc + course.enrolled_students, 0);
-            document.getElementById('pendingSubmissions').textContent = data.pending_submissions || 0;
-            document.getElementById('averageGrade').textContent = data.average_grade || 'N/A';
-        }
-
-        function displayCourses(courses) {
-            const coursesList = document.getElementById('coursesList');
-            coursesList.innerHTML = courses.map(course => `
-                <div class="dashboard-section">
-                    <h3>${course.CourseName} (${course.CourseCode})</h3>
-                    <div class="assignment-stats">
-                        <div class="assignment-stat">
-                            <h4>Students</h4>
-                            <p>${course.enrolled_students}</p>
-                        </div>
-                        <div class="assignment-stat">
-                            <h4>Assignments</h4>
-                            <p>${course.assignment_count}</p>
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="viewCourseDetails(${course.CourseID})">
-                        View Details
-                    </button>
-                </div>
-            `).join('');
-        }
-
+        // Remove duplicate displayTeachingCourses function
+        // Keep only one version with all the stats displayed
         function displayTeachingCourses(courses) {
             const container = document.getElementById('teachingCourses');
             if (!courses || courses.length === 0) {
@@ -678,9 +679,49 @@
             `).join('');
         }
 
+        // Fix the displayAssignmentsList function - remove duplicate
+        function displayAssignmentsList(assignments) {
+            const tbody = document.getElementById('assignmentsList');
+            tbody.innerHTML = assignments.map(assignment => `
+                <tr>
+                    <td>${assignment.title}</td>
+                    <td>${new Date(assignment.due_date).toLocaleString()}</td>
+                    <td>${assignment.submission_count}/${assignment.total_students}</td>
+                    <td>
+                        <button class="btn btn-danger" onclick="deleteAssignment(${assignment.id}, '${assignment.title}')">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
         function setupEventListeners() {
             document.getElementById('createAssignmentForm').addEventListener('submit', handleAssignmentCreation);
             document.getElementById('gradeForm').addEventListener('submit', handleGradeSubmission);
+            document.getElementById('assignmentUploadForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                
+                fetch('/api/assignments/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Assignment uploaded successfully');
+                        closeModal('assignmentUploadModal');
+                        fetchProfessorDashboard();  // Refresh the dashboard
+                    } else {
+                        alert(data.message || 'Failed to upload assignment');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while uploading the assignment');
+                });
+            });
         }
 
         function handleAssignmentCreation(e) {
@@ -821,8 +862,8 @@
                     <td>${new Date(assignment.due_date).toLocaleString()}</td>
                     <td>${assignment.submission_count}/${assignment.total_students}</td>
                     <td>
-                        <button class="btn btn-primary" onclick="viewAssignment(${assignment.id})">
-                            View Details
+                        <button class="btn btn-danger" onclick="deleteAssignment(${assignment.id}, '${assignment.title}')">
+                            Delete
                         </button>
                     </td>
                 </tr>
@@ -841,6 +882,69 @@
                 document.getElementById(button.dataset.tab).classList.add('active');
             });
         });
+
+        function openAssignmentModal(courseId) {
+            document.getElementById('assignmentCourseId').value = courseId;
+            openModal('assignmentUploadModal');
+            
+            // Setup dropzone functionality
+            const dropzone = document.getElementById('assignmentDropzone');
+            const fileInput = document.getElementById('assignmentFile');
+
+            dropzone.onclick = () => fileInput.click();
+            
+            dropzone.ondragover = (e) => {
+                e.preventDefault();
+                dropzone.classList.add('drag-over');
+            };
+            
+            dropzone.ondragleave = () => dropzone.classList.remove('drag-over');
+            
+            dropzone.ondrop = (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('drag-over');
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    updateDropzoneText(e.dataTransfer.files[0].name);
+                }
+            };
+
+            fileInput.onchange = () => {
+                if (fileInput.files.length) {
+                    updateDropzoneText(fileInput.files[0].name);
+                }
+            };
+        }
+
+        function updateDropzoneText(filename) {
+            document.querySelector('#assignmentDropzone p').textContent = `Selected file: ${filename}`;
+        }
+
+        function deleteAssignment(assignmentId, title) {
+            if (!confirm(`Are you sure you want to delete assignment "${title}"? This cannot be undone.`)) {
+                return;
+            }
+
+            fetch(`/api/assignments/${assignmentId}/delete`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Assignment deleted successfully');
+                    // Refresh the current course details
+                    viewCourseDetails(currentCourseId);
+                    // Also refresh the main dashboard to update stats
+                    fetchProfessorDashboard();
+                } else {
+                    alert(data.message || 'Failed to delete assignment');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while deleting the assignment');
+            });
+        }
     </script>
 </body>
 </html>
