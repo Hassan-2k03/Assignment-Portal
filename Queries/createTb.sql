@@ -34,14 +34,24 @@ CREATE TABLE Course (
 );
 
 -- Assignment table
-CREATE TABLE Assignment (
-    AssignmentID INT AUTO_INCREMENT PRIMARY KEY,
-    CourseID INT NOT NULL,
-    Title VARCHAR(255) NOT NULL,
-    Description TEXT,
-    DueDate DATETIME,
-    FOREIGN KEY (CourseID) REFERENCES Course(CourseID)
-);
+CREATE TABLE `assignment` (
+  `AssignmentID` int NOT NULL AUTO_INCREMENT,
+  `CourseID` int NOT NULL,
+  `Title` varchar(255) NOT NULL,
+  `Description` text,
+  `DueDate` datetime DEFAULT NULL,
+  `Status` varchar(20) DEFAULT 'active',
+  `MaxPoints` int DEFAULT '100',
+  `FilePath` varchar(255) DEFAULT NULL,
+  `CreatedBy` int DEFAULT NULL,
+  `CreatedAt` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`AssignmentID`),
+  KEY `CourseID` (`CourseID`),
+  KEY `CreatedBy` (`CreatedBy`),
+  CONSTRAINT `assignment_ibfk_1` FOREIGN KEY (`CourseID`) REFERENCES `course` (`CourseID`),
+  CONSTRAINT `assignment_ibfk_2` FOREIGN KEY (`CreatedBy`) REFERENCES `user` (`UserID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+
 
 -- Defines relationship table (between User and Assignment)
 CREATE TABLE Defines (
