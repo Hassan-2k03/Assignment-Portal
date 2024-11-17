@@ -154,3 +154,12 @@ CREATE TABLE EnrollmentRequest (
     FOREIGN KEY (CourseID) REFERENCES Course(CourseID),
     UNIQUE KEY unique_request (StudentID, CourseID, Status)
 );
+
+-- Modify Assignment table FilePath column
+ALTER TABLE Assignment MODIFY COLUMN FilePath VARCHAR(2048);
+
+-- Modify Submission table SubmissionPath column
+ALTER TABLE Submission MODIFY COLUMN SubmissionPath VARCHAR(2048);
+
+-- Modify CourseMaterial table FilePath column
+ALTER TABLE CourseMaterial MODIFY COLUMN FilePath VARCHAR(2048);

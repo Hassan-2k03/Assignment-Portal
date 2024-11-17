@@ -7,11 +7,12 @@ from config import (SECRET_KEY, DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD,
 import datetime
 import os
 from functools import wraps
+from cloud_storage import CloudStorage
+from msal import ConfidentialClientApplication
+from urllib.parse import urlencode
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY  # Set a strong secret key!
-app.config['UPLOAD_FOLDER'] = r'C:\Users\hassa\OneDrive\Documents\Academics\Semester 5\Assignment Portal\uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
 # Database connection 
 mydb = mysql.connector.connect(
@@ -20,6 +21,9 @@ mydb = mysql.connector.connect(
     password=DATABASE_PASSWORD,
     database=DATABASE_NAME
 )
+
+# Initialize cloud storage
+cloud_storage = CloudStorage()
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -131,27 +135,20 @@ def upload_assignment():
 
         if file and allowed_file(file.filename):
             try:
-                # Create assignment directory with unique identifier
+                # Create virtual path for cloud storage
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                assignment_dir = os.path.join(
-                    app.config['UPLOAD_FOLDER'], 
-                    f'course_{course_id}', 
-                    'assignments',
-                    f'{timestamp}_{safe_title}'
-                )
-                os.makedirs(assignment_dir, exist_ok=True)
+                cloud_folder = f'course_{course_id}/assignments/{timestamp}_{safe_title}'
                 
-                # Secure filename and save file
+                # Upload file to cloud storage
                 filename = secure_filename(file.filename)
-                file_path = os.path.join(assignment_dir, filename)
-                file.save(file_path)
+                file_url = cloud_storage.upload_file(file, cloud_folder, filename)
 
-                # Create assignment record
+                # Create assignment record with cloud URL
                 cursor.execute("""
                     INSERT INTO Assignment (CourseID, Title, Description, DueDate, FilePath, CreatedBy, CreatedAt)
                     VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                """, (course_id, title, description, due_date, file_path, session['user_id']))
+                """, (course_id, title, description, due_date, file_url, session['user_id']))
                 
                 mydb.commit()
 
@@ -939,22 +936,19 @@ def submit_assignment(assignment_id):
             return jsonify({'message': 'No selected file'}), 400
 
         if file and allowed_file(file.filename):
-            # Create submission directory if it doesn't exist
-            submission_dir = os.path.join(app.config['UPLOAD_FOLDER'], f'assignment_{assignment_id}')
-            os.makedirs(submission_dir, exist_ok=True)
-            
-            # Secure filename and save file
-            filename = secure_filename(f"{session['user_id']}_{file.filename}")
-            file_path = os.path.join(submission_dir, filename)
-            file.save(file_path)
-
-            cursor = mydb.cursor(dictionary=True)
             try:
-                # Record the submission in database
+                # Create virtual path for cloud storage
+                cloud_folder = f'assignment_{assignment_id}/submissions'
+                filename = secure_filename(f"{session['user_id']}_{file.filename}")
+                
+                # Upload to cloud storage
+                file_url = cloud_storage.upload_file(file, cloud_folder, filename)
+
+                # Save submission record with cloud URL
                 cursor.execute("""
                     INSERT INTO Submission (AssignmentID, StudentID, SubmissionPath, SubmissionDate)
                     VALUES (%s, %s, %s, NOW())
-                """, (assignment_id, session['user_id'], file_path))
+                """, (assignment_id, session['user_id'], file_url))
                 mydb.commit()
                 return jsonify({'message': 'Assignment submitted successfully'}), 201
             except mysql.connector.Error as err:
@@ -1077,10 +1071,9 @@ def download_submission(submission_id):
         if not submission:
             return jsonify({'message': 'Submission not found or unauthorized'}), 404
 
-        return send_from_directory(
-            directory=os.path.dirname(submission['SubmissionPath']),
-            path=os.path.basename(submission['SubmissionPath'])
-        )
+        # Redirect to OneDrive URL for download
+        return redirect(submission['SubmissionPath'])
+
     except mysql.connector.Error as err:
         print(f"Error downloading submission: {err}")
         return jsonify({'message': 'Failed to download submission'}), 500
