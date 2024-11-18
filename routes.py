@@ -131,27 +131,38 @@ def upload_assignment():
 
         if file and allowed_file(file.filename):
             try:
-                # Create assignment directory with unique identifier
+                # Create paths for professor uploads
+                assignment_base_dir = os.path.join(
+                    app.config['UPLOAD_FOLDER'],
+                    'assignments'  # Base directory for all assignments
+                )
+                
+                # Create unique assignment directory
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
                 assignment_dir = os.path.join(
-                    app.config['UPLOAD_FOLDER'], 
-                    f'course_{course_id}', 
-                    'assignments',
-                    f'{timestamp}_{safe_title}'
+                    assignment_base_dir,
+                    f'assignment_{timestamp}_{safe_title}'  # Unique assignment directory
                 )
-                os.makedirs(assignment_dir, exist_ok=True)
                 
-                # Secure filename and save file
+                # Create professor uploads directory within assignment directory
+                professor_upload_dir = os.path.join(assignment_dir, 'professor_upload')
+                os.makedirs(professor_upload_dir, exist_ok=True)
+                
+                # Save professor's file
                 filename = secure_filename(file.filename)
-                file_path = os.path.join(assignment_dir, filename)
+                file_path = os.path.join(professor_upload_dir, filename)
                 file.save(file_path)
 
-                # Create assignment record
+                # Create directory for student submissions
+                student_submissions_dir = os.path.join(assignment_dir, 'student_submissions')
+                os.makedirs(student_submissions_dir, exist_ok=True)
+
+                # Save assignment record with the assignment directory path
                 cursor.execute("""
                     INSERT INTO Assignment (CourseID, Title, Description, DueDate, FilePath, CreatedBy, CreatedAt)
                     VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                """, (course_id, title, description, due_date, file_path, session['user_id']))
+                """, (course_id, title, description, due_date, assignment_dir, session['user_id']))
                 
                 mydb.commit()
 
@@ -939,17 +950,28 @@ def submit_assignment(assignment_id):
             return jsonify({'message': 'No selected file'}), 400
 
         if file and allowed_file(file.filename):
-            # Create submission directory if it doesn't exist
-            submission_dir = os.path.join(app.config['UPLOAD_FOLDER'], f'assignment_{assignment_id}')
-            os.makedirs(submission_dir, exist_ok=True)
-            
-            # Secure filename and save file
-            filename = secure_filename(f"{session['user_id']}_{file.filename}")
-            file_path = os.path.join(submission_dir, filename)
-            file.save(file_path)
-
             cursor = mydb.cursor(dictionary=True)
             try:
+                # Get assignment directory path
+                cursor.execute("SELECT FilePath FROM Assignment WHERE AssignmentID = %s", (assignment_id,))
+                assignment = cursor.fetchone()
+                if not assignment:
+                    return jsonify({'message': 'Assignment not found'}), 404
+
+                # Create student submission directory
+                student_dir = os.path.join(
+                    assignment['FilePath'],
+                    'student_submissions',
+                    f'student_{session["user_id"]}'  # Individual student directory
+                )
+                os.makedirs(student_dir, exist_ok=True)
+                
+                # Save submission with timestamp
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = secure_filename(f"{timestamp}_{file.filename}")
+                file_path = os.path.join(student_dir, filename)
+                file.save(file_path)
+
                 # Record the submission in database
                 cursor.execute("""
                     INSERT INTO Submission (AssignmentID, StudentID, SubmissionPath, SubmissionDate)
