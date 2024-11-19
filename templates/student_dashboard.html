@@ -362,6 +362,39 @@
             margin-top: 0.5rem;
             display: none;
         }
+
+        .form-group {
+            margin-bottom: 2rem;    /* Increased from 1rem */
+            padding: 1rem;          /* Added padding */
+            background: #f8f9fa;    /* Light background */
+            border-radius: 8px;     /* Rounded corners */
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 1rem;    /* Increased from 0.5rem */
+            font-weight: 500;
+            color: #2c3e50;
+        }
+
+        .form-group input[type="file"] {
+            padding: 0.8rem;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+        }
+
+        /* New style for submit button container */
+        .submit-container {
+            margin-top: 2rem;       /* Space above submit button */
+            text-align: center;     /* Center the button */
+        }
+
+        .submit-container .btn {
+            min-width: 200px;       /* Wider button */
+            padding: 1rem 2rem;     /* Larger padding */
+        }
     </style>
 </head>
 <body>
@@ -438,18 +471,16 @@
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Submit Assignment</h2>
-            <div class="file-upload" id="fileDropzone">
-                <p>Drag and drop your file here or click to select</p>
-                <input type="file" id="assignmentFile" name="file" hidden>
-            </div>
-            <div class="file-info" id="fileInfo">
-                <p>Selected file: <span id="fileName">No file selected</span></p>
-                <div class="progress-bar">
-                    <div class="progress" id="uploadProgress"></div>
+            <form id="assignmentSubmissionForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="assignmentFile">Select File to Upload</label>
+                    <input type="file" id="assignmentFile" name="file" required>
                 </div>
-            </div>
-            <p class="error-message" id="errorMessage"></p>
-            <button type="button" class="btn btn-primary" id="submitButton" disabled>Submit Assignment</button>
+                <p class="error-message" id="errorMessage"></p>
+                <div class="submit-container">
+                    <button type="submit" class="btn btn-primary">Submit Assignment</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -618,27 +649,84 @@
 
         function submitAssignment(assignmentId) {
             currentAssignmentId = assignmentId;
-            // Reset the modal state
-            const fileInput = document.getElementById('assignmentFile');
-            const dropzone = document.getElementById('fileDropzone');
-            const fileInfo = document.getElementById('fileInfo');
-            const errorMessage = document.getElementById('errorMessage');
-            const submitButton = document.getElementById('submitButton');
-            
-            // Clear previous file
-            fileInput.value = '';
-            // Reset dropzone text
-            dropzone.querySelector('p').textContent = 'Drag and drop your file here or click to select';
-            // Hide info and error sections
-            fileInfo.style.display = 'none';
-            errorMessage.style.display = 'none';
-            // Disable submit button until file is selected
-            submitButton.disabled = true;
-            
-            // Show the modal
             const modal = document.getElementById('submissionModal');
+            const form = document.getElementById('assignmentSubmissionForm');
+            const fileInput = document.getElementById('assignmentFile');
+            const errorMessage = document.getElementById('errorMessage');
+
+            // Reset the form
+            form.reset();
+            errorMessage.style.display = 'none';
+
+            // Show the modal
             modal.style.display = 'block';
+
+            // Form submission handler
+            form.onsubmit = async function(e) {
+                e.preventDefault();
+                
+                const file = fileInput.files[0];
+                if (!file) {
+                    errorMessage.textContent = 'Please select a file';
+                    errorMessage.style.display = 'block';
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch(`/assignments/${currentAssignmentId}/submit`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        modal.style.display = 'none';
+                        alert('Assignment submitted successfully!');
+                        fetchDashboardData(); // Refresh the dashboard
+                    } else {
+                        throw new Error(result.message || 'Failed to submit assignment');
+                    }
+                } catch (error) {
+                    errorMessage.textContent = error.message;
+                    errorMessage.style.display = 'block';
+                }
+            };
         }
+
+        // Update dropzone functionality
+        function setupFileDropzone() {
+            const dropzone = document.getElementById('fileDropzone');
+            const fileInput = document.getElementById('assignmentFile');
+
+            dropzone.onclick = () => fileInput.click();
+
+            dropzone.ondragover = (e) => {
+                e.preventDefault();
+                dropzone.classList.add('drag-over');
+            };
+
+            dropzone.ondragleave = () => {
+                dropzone.classList.remove('drag-over');
+            };
+
+            dropzone.ondrop = (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('drag-over');
+                
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    document.getElementById('fileName').textContent = e.dataTransfer.files[0].name;
+                    document.getElementById('fileInfo').style.display = 'block';
+                    document.getElementById('submitButton').disabled = false;
+                }
+            };
+        }
+
+        document.addEventListener('DOMContentLoaded', setupFileDropzone);
 
         function setupFileUpload() {
             const dropzone = document.getElementById('fileDropzone');

@@ -789,7 +789,7 @@ def delete_assignment(assignment_id):
     try:
         # First verify the professor owns this assignment
         cursor.execute("""
-            SELECT a.*, c.InstructorID 
+            SELECT a.*, c.InstructorID, c.CourseID
             FROM Assignment a
             JOIN Course c ON a.CourseID = c.CourseID
             WHERE a.AssignmentID = %s
@@ -812,11 +812,7 @@ def delete_assignment(assignment_id):
         cursor.execute("START TRANSACTION")
         
         try:
-            # Delete associated files if they exist
-            if assignment['FilePath'] and os.path.exists(assignment['FilePath']):
-                os.remove(assignment['FilePath'])
-            
-            # Delete submissions and their files
+            # Get all submission files before deleting database records
             cursor.execute("""
                 SELECT SubmissionPath 
                 FROM Submission 
@@ -824,9 +820,31 @@ def delete_assignment(assignment_id):
             """, (assignment_id,))
             
             submissions = cursor.fetchall()
+
+            # Delete submission files
             for submission in submissions:
                 if submission['SubmissionPath'] and os.path.exists(submission['SubmissionPath']):
-                    os.remove(submission['SubmissionPath'])
+                    try:
+                        if os.path.isfile(submission['SubmissionPath']):
+                            os.remove(submission['SubmissionPath'])
+                        elif os.path.isdir(submission['SubmissionPath']):
+                            import shutil
+                            shutil.rmtree(submission['SubmissionPath'])
+                    except OSError:
+                        # Continue even if file deletion fails
+                        pass
+
+            # Delete the assignment directory if it exists
+            if assignment['FilePath'] and os.path.exists(assignment['FilePath']):
+                try:
+                    if os.path.isfile(assignment['FilePath']):
+                        os.remove(assignment['FilePath'])
+                    elif os.path.isdir(assignment['FilePath']):
+                        import shutil
+                        shutil.rmtree(assignment['FilePath'])
+                except OSError:
+                    # Continue even if directory deletion fails
+                    pass
 
             # Delete database records
             cursor.execute("DELETE FROM Submission WHERE AssignmentID = %s", (assignment_id,))
@@ -850,16 +868,17 @@ def delete_assignment(assignment_id):
 
         except Exception as e:
             cursor.execute("ROLLBACK")
+            print(f"Error during deletion: {str(e)}")
             raise e
 
     except mysql.connector.Error as err:
-        print(f"Error deleting assignment: {err}")
+        print(f"Database error: {err}")
         return jsonify({
             'success': False,
-            'message': 'Failed to delete assignment'
+            'message': 'Database error occurred'
         }), 500
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {str(e)}")
         return jsonify({
             'success': False,
             'message': 'An error occurred while deleting the assignment'
@@ -928,70 +947,91 @@ def student_dashboard():
 def submit_assignment(assignment_id):
     """Submit assignment files for grading."""
     if session.get('role') != 'student':
-        return jsonify({'message': 'Only students can access this route'}), 403
+        return jsonify({'success': False, 'message': 'Only students can submit assignments'}), 403
 
-    if 'user_id' not in session:
-        return jsonify({'message': 'Unauthorized'}), 401
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No selected file'}), 400
 
     cursor = mydb.cursor(dictionary=True)
     try:
-        # First verify if user is a student
-        cursor.execute("SELECT Role FROM User WHERE UserID = %s", (session['user_id'],))
-        user = cursor.fetchone()
-        if user['Role'] != 'student':
-            return jsonify({'message': 'Only students can submit assignments'}), 403
-
-        # Rest of the submission logic
-        if 'file' not in request.files:
-            return jsonify({'message': 'No file part'}), 400
+        # Verify assignment exists and is still accepting submissions
+        cursor.execute("""
+            SELECT a.*, c.CourseID 
+            FROM Assignment a
+            JOIN Course c ON a.CourseID = c.CourseID
+            WHERE a.AssignmentID = %s
+        """, (assignment_id,))
         
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'message': 'No selected file'}), 400
+        assignment = cursor.fetchone()
+        if not assignment:
+            return jsonify({'success': False, 'message': 'Assignment not found'}), 404
+
+        # Verify student is enrolled in the course
+        cursor.execute("""
+            SELECT 1 FROM Enrollment 
+            WHERE StudentID = %s AND CourseID = %s AND Status = 'active'
+        """, (session['user_id'], assignment['CourseID']))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'message': 'You are not enrolled in this course'}), 403
 
         if file and allowed_file(file.filename):
-            cursor = mydb.cursor(dictionary=True)
             try:
-                # Get assignment directory path
-                cursor.execute("SELECT FilePath FROM Assignment WHERE AssignmentID = %s", (assignment_id,))
-                assignment = cursor.fetchone()
-                if not assignment:
-                    return jsonify({'message': 'Assignment not found'}), 404
-
-                # Create student submission directory
-                student_dir = os.path.join(
+                # Create submission directory if it doesn't exist
+                submission_dir = os.path.join(
                     assignment['FilePath'],
                     'student_submissions',
-                    f'student_{session["user_id"]}'  # Individual student directory
+                    f'student_{session["user_id"]}'
                 )
-                os.makedirs(student_dir, exist_ok=True)
-                
-                # Save submission with timestamp
+                os.makedirs(submission_dir, exist_ok=True)
+
+                # Create unique filename with timestamp
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = secure_filename(f"{timestamp}_{file.filename}")
-                file_path = os.path.join(student_dir, filename)
+                file_path = os.path.join(submission_dir, filename)
+                
+                # Save the file
                 file.save(file_path)
 
                 # Record the submission in database
                 cursor.execute("""
-                    INSERT INTO Submission (AssignmentID, StudentID, SubmissionPath, SubmissionDate)
+                    INSERT INTO Submission 
+                    (AssignmentID, StudentID, SubmissionPath, SubmissionDate) 
                     VALUES (%s, %s, %s, NOW())
+                    ON DUPLICATE KEY UPDATE 
+                    SubmissionPath = VALUES(SubmissionPath),
+                    SubmissionDate = NOW()
                 """, (assignment_id, session['user_id'], file_path))
+                
                 mydb.commit()
-                return jsonify({'message': 'Assignment submitted successfully'}), 201
-            except mysql.connector.Error as err:
-                if err.errno == 1644:  # Custom error from trigger
-                    return jsonify({'message': str(err)}), 403
-                print(f"Error recording submission: {err}")
-                return jsonify({'message': 'Failed to record submission'}), 500
 
-        return jsonify({'message': 'File type not allowed'}), 400
+                return jsonify({
+                    'success': True,
+                    'message': 'Assignment submitted successfully'
+                }), 200
+
+            except Exception as e:
+                print(f"Error saving submission: {e}")
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to save submission'
+                }), 500
+
+        return jsonify({
+            'success': False,
+            'message': 'Invalid file type'
+        }), 400
 
     except mysql.connector.Error as err:
-        if err.errno == 1644:  # Custom error from trigger
-            return jsonify({'message': str(err)}), 403
-        print(f"Error submitting assignment: {err}")
-        return jsonify({'message': 'Failed to submit assignment'}), 500
+        print(f"Database error: {err}")
+        return jsonify({
+            'success': False,
+            'message': 'Database error occurred'
+        }), 500
 
 @app.route('/student/courses/request/<int:course_id>', methods=['POST'])
 @login_required
