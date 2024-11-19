@@ -1,0 +1,85 @@
+Definitions, Acronyms and Abbreviations
+
+A
+- Active - Currently valid or ongoing (course, assignment, etc.)
+- Admin - System administrator with full control
+- Assignment - Task given to students for completion
+- Auth - Authentication/Authorization
+
+C 
+- Course - Academic class or subject unit
+- CRUD - Create, Read, Update, Delete operations
+- CSV - Comma Separated Values
+
+D
+- DB - Database
+- DBMS - Database Management System
+- DDL - Data Definition Language
+- DML - Data Manipulation Language
+- DOC/DOCX - Microsoft Word Document formats
+
+E
+- ER - Entity Relationship 
+- ERD - Entity Relationship Diagram
+
+F
+- FK - Foreign Key
+- FKC - Foreign Key Constraint
+
+G
+- GUI - Graphical User Interface
+
+H
+- HTML - HyperText Markup Language
+- HTTP - HyperText Transfer Protocol
+
+I
+- ID - Identifier
+- IDE - Integrated Development Environment
+
+J
+- JSON - JavaScript Object Notation
+- JWT - JSON Web Token
+
+L
+- LMS - Learning Management System
+
+M
+- MB - Megabyte
+- MIME - Multipurpose Internet Mail Extensions
+- MySQL - My Structured Query Language
+
+N 
+- 3NF - Third Normal Form
+
+P
+- PDF - Portable Document Format
+- PK - Primary Key
+- PROC - Stored Procedure
+
+R
+- RDBMS - Relational Database Management System
+- REQ - Requirement
+
+S
+- SQL - Structured Query Language
+- SP - Stored Procedure
+- SUBMIT - Submit an assignment
+
+T
+- TXT - Text file
+- TRIG - Database Trigger
+
+U
+- UI - User Interface
+- URL - Uniform Resource Locator
+- UUID - Universally Unique Identifier
+
+V
+- VER - Version
+
+W
+- WWW - World Wide Web
+
+
+remove and  
