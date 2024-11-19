@@ -19,8 +19,7 @@ CREATE TABLE User (
     FirstName VARCHAR(255),
     LastName VARCHAR(255),
     Email VARCHAR(255),
-    Role ENUM('student', 'professor', 'admin') NOT NULL,
-    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    Role ENUM('student', 'professor', 'admin') NOT NULL
 );
 
 -- Course table
@@ -31,19 +30,37 @@ CREATE TABLE Course (
     InstructorID INT,
     Year INT, 
     Semester INT,
-    FOREIGN KEY (InstructorID) REFERENCES User(UserID),
-    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    FOREIGN KEY (InstructorID) REFERENCES User(UserID)
 );
 
+-- Update Course table to enable cascading deletes
+ALTER TABLE Course
+ADD CONSTRAINT course_instructor_fk
+FOREIGN KEY (InstructorID) REFERENCES User(UserID) ON DELETE SET NULL;
+
 -- Assignment table
-CREATE TABLE Assignment (
-    AssignmentID INT AUTO_INCREMENT PRIMARY KEY,
-    CourseID INT NOT NULL,
-    Title VARCHAR(255) NOT NULL,
-    Description TEXT,
-    DueDate DATETIME,
-    FOREIGN KEY (CourseID) REFERENCES Course(CourseID)
-);
+CREATE TABLE `assignment` (
+  `AssignmentID` int NOT NULL AUTO_INCREMENT,
+  `CourseID` int NOT NULL,
+  `Title` varchar(255) NOT NULL,
+  `Description` text,
+  `DueDate` datetime DEFAULT NULL,
+  `Status` varchar(20) DEFAULT 'active',
+  `MaxPoints` int DEFAULT '100',
+  `FilePath` varchar(255) DEFAULT NULL,
+  `CreatedBy` int DEFAULT NULL,
+  `CreatedAt` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`AssignmentID`),
+  KEY `CourseID` (`CourseID`),
+  KEY `CreatedBy` (`CreatedBy`),
+  CONSTRAINT `assignment_ibfk_1` FOREIGN KEY (`CourseID`) REFERENCES `course` (`CourseID`),
+  CONSTRAINT `assignment_ibfk_2` FOREIGN KEY (`CreatedBy`) REFERENCES `user` (`UserID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+
+-- Update related tables to cascade on course deletion
+ALTER TABLE Assignment
+ADD CONSTRAINT assignment_course_fk
+FOREIGN KEY (CourseID) REFERENCES Course(CourseID) ON DELETE CASCADE;
 
 -- Defines relationship table (between User and Assignment)
 CREATE TABLE Defines (
@@ -89,8 +106,7 @@ CREATE TABLE Submission (
 
 -- Update Submission table to include grading fields
 ALTER TABLE Submission
-ADD COLUMN GradedDate DATETIME NULL,
-ADD COLUMN LastModified DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+ADD COLUMN GradedDate DATETIME NULL;
 
 -- Add index for faster grading queries
 CREATE INDEX idx_submission_assignment ON Submission(AssignmentID);
@@ -136,6 +152,11 @@ CREATE TABLE Enrollment (
     UNIQUE KEY unique_enrollment (StudentID, CourseID)
 );
 
+-- Update related tables to cascade on course deletion
+ALTER TABLE Enrollment
+ADD CONSTRAINT enrollment_course_fk
+FOREIGN KEY (CourseID) REFERENCES Course(CourseID) ON DELETE CASCADE;
+
 CREATE TABLE EnrollmentRequest (
     RequestID INT AUTO_INCREMENT PRIMARY KEY,
     StudentID INT NOT NULL,
@@ -148,3 +169,7 @@ CREATE TABLE EnrollmentRequest (
     UNIQUE KEY unique_request (StudentID, CourseID, Status)
 );
 
+-- Update related tables to cascade on course deletion
+ALTER TABLE EnrollmentRequest
+ADD CONSTRAINT enrollment_request_course_fk
+FOREIGN KEY (CourseID) REFERENCES Course(CourseID) ON DELETE CASCADE;

@@ -21,3 +21,12 @@ TRUNCATE TABLE GradeRubric;
 TRUNCATE TABLE Assignment;
 
 SET FOREIGN_KEY_CHECKS = 1;  -- Re-enable foreign key checks
+
+
+templates/
+├── assignments/
+│   ├── detail.html     # For viewing assignment details
+│   └── submit.html     # For assignment submission form
+├── courses/
+│   ├── detail.html     # For course details
+│   └── materials.html  # For course materials
