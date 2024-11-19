@@ -708,9 +708,31 @@ def professor_dashboard():
         
         courses = cursor.fetchall()
         
+        # Add query for recent submissions
+        cursor.execute("""
+            SELECT 
+                CONCAT(u.FirstName, ' ', u.LastName) as student_name,
+                a.Title as assignment_title,
+                c.CourseName as course_name,
+                s.SubmissionDate,
+                s.Grade,
+                s.SubmissionID,
+                a.MaxPoints
+            FROM Submission s
+            JOIN Assignment a ON s.AssignmentID = a.AssignmentID
+            JOIN Course c ON a.CourseID = c.CourseID
+            JOIN User u ON s.StudentID = u.UserID
+            WHERE c.InstructorID = %s
+            ORDER BY s.SubmissionDate DESC
+            LIMIT 10
+        """, (session['user_id'],))
+        
+        submissions = cursor.fetchall()
+        
         return jsonify({
             'stats': stats,
             'courses': courses,
+            'submissions': submissions,
             'professor_name': session.get('username')
         }), 200
         
@@ -1104,7 +1126,7 @@ def upload_course_material(course_id):
                 mydb.commit()
                 return jsonify({'message': 'Material uploaded successfully'}), 201
             except mysql.connector.Error as err:
-                if err.errno == 1644:  # Custom error from trigger
+                if (err.errno == 1644):  # Custom error from trigger
                     return jsonify({'message': str(err)}), 403
                 print(f"Error recording material: {err}")
                 return jsonify({'message': 'Failed to record material'}), 500

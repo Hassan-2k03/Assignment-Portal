@@ -463,8 +463,8 @@
                             <th>Assignment</th>
                             <th>Course</th>
                             <th>Submission Date</th>
-                            <th>Status</th>
                             <th>Grade</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -511,8 +511,8 @@
             <h2>Grade Submission</h2>
             <form id="gradeForm">
                 <div class="form-group">
-                    <label for="grade">Grade</label>
-                    <input type="number" id="grade" name="grade" min="0" max="100" required>
+                    <label for="grade">Grade (out of <span id="maxPoints">100</span>)</label>
+                    <input type="number" id="grade" name="grade" min="0" required>
                 </div>
                 <div class="form-group">
                     <label for="feedback">Feedback</label>
@@ -631,6 +631,7 @@
                 .then(data => {
                     updateDashboardStats(data.stats);
                     displayTeachingCourses(data.courses);
+                    displaySubmissions(data.submissions); // Add this line
                     document.getElementById('professorName').textContent = `Welcome, ${data.professor_name}`;
                 })
                 .catch(error => console.error('Error:', error));
@@ -942,6 +943,47 @@
                 console.error('Error:', error);
                 alert('An error occurred while deleting the assignment');
             });
+        }
+
+        // Add this new function
+        function displaySubmissions(submissions) {
+            const tbody = document.querySelector('#submissionsTable tbody');
+            if (!submissions || submissions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No recent submissions</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = submissions.map(submission => {
+                const submissionDate = new Date(submission.SubmissionDate).toLocaleString();
+                const gradeDisplay = submission.Grade 
+                    ? `<span class="grade-badge">${submission.Grade}/${submission.MaxPoints}</span>`
+                    : `<button class="btn btn-primary" onclick="openGradeModal(${submission.SubmissionID}, ${submission.MaxPoints})">
+                        Grade
+                       </button>`;
+                
+                return `
+                    <tr>
+                        <td>${submission.student_name}</td>
+                        <td>${submission.assignment_title}</td>
+                        <td>${submission.course_name}</td>
+                        <td>${submissionDate}</td>
+                        <td>${gradeDisplay}</td>
+                        <td>
+                            <button class="btn btn-primary" onclick="downloadSubmission(${submission.SubmissionID})">
+                                Download
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openGradeModal(submissionId, maxPoints) {
+            currentSubmissionId = submissionId;
+            document.getElementById('maxPoints').textContent = maxPoints;
+            document.getElementById('grade').max = maxPoints;
+            document.getElementById('gradeForm').reset();
+            openModal('gradeModal');
         }
     </script>
 </body>
