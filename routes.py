@@ -745,31 +745,33 @@ def professor_dashboard():
 def grade_submission(submission_id):
     """Grade and provide feedback on student submissions."""
     if session.get('role') != 'professor':
-        return jsonify({'message': 'Only professors can access this route'}), 403
-
-    if 'user_id' not in session or session.get('role') != 'professor':
-        return jsonify({'message': 'Unauthorized'}), 401
+        return jsonify({'success': False, 'message': 'Only professors can grade submissions'}), 403
 
     data = request.get_json()
     grade = data.get('grade')
     feedback = data.get('feedback')
 
-    if not grade:
-        return jsonify({'message': 'Grade is required'}), 400
+    if grade is None:
+        return jsonify({'success': False, 'message': 'Grade is required'}), 400
 
     cursor = mydb.cursor(dictionary=True)
     try:
         # Verify professor teaches this course
         cursor.execute("""
-            SELECT c.CourseID 
+            SELECT c.CourseID, a.MaxPoints 
             FROM Course c
             JOIN Assignment a ON c.CourseID = a.CourseID
             JOIN Submission s ON a.AssignmentID = s.AssignmentID
             WHERE s.SubmissionID = %s AND c.InstructorID = %s
         """, (submission_id, session['user_id']))
 
-        if not cursor.fetchone():
-            return jsonify({'message': 'Not authorized to grade this submission'}), 403
+        course_info = cursor.fetchone()
+        if not course_info:
+            return jsonify({'success': False, 'message': 'Not authorized to grade this submission'}), 403
+
+        # Validate grade is within allowed range
+        if grade < 0 or grade > course_info['MaxPoints']:
+            return jsonify({'success': False, 'message': f'Grade must be between 0 and {course_info["MaxPoints"]}'}), 400
 
         # Update the submission with grade and feedback
         cursor.execute("""
@@ -792,10 +794,11 @@ def grade_submission(submission_id):
         """, (submission_id,))
         
         mydb.commit()
-        return jsonify({'message': 'Submission graded successfully'}), 200
+        return jsonify({'success': True, 'message': 'Submission graded successfully'}), 200
+
     except mysql.connector.Error as err:
         print(f"Error grading submission: {err}")
-        return jsonify({'message': 'Failed to grade submission'}), 500
+        return jsonify({'success': False, 'message': 'Failed to grade submission'}), 500
 
 @app.route('/api/assignments/<int:assignment_id>/delete', methods=['POST'])
 @login_required

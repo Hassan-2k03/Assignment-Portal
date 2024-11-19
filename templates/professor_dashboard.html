@@ -510,6 +510,7 @@
             <span class="close" onclick="closeModal('gradeModal')">&times;</span>
             <h2>Grade Submission</h2>
             <form id="gradeForm">
+                <input type="hidden" id="submissionId" name="submissionId">
                 <div class="form-group">
                     <label for="grade">Grade (out of <span id="maxPoints">100</span>)</label>
                     <input type="number" id="grade" name="grade" min="0" required>
@@ -745,22 +746,36 @@
 
         function handleGradeSubmission(e) {
             e.preventDefault();
-            const formData = new FormData(e.target);
-            const submissionId = e.target.dataset.submissionId;
+            const submissionId = document.getElementById('submissionId').value;
+            const grade = document.getElementById('grade').value;
+            const feedback = document.getElementById('feedback').value;
+
+            const data = {
+                grade: parseInt(grade),
+                feedback: feedback
+            };
 
             fetch(`/submissions/${submissionId}/grade`, {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
             })
             .then(response => response.json())
             .then(data => {
-                alert(data.message);
-                if (data.message.includes('successfully')) {
+                if (data.success) {
+                    alert('Grade submitted successfully');
                     closeModal('gradeModal');
-                    fetchProfessorDashboard();
+                    fetchProfessorDashboard(); // Refresh the dashboard
+                } else {
+                    alert(data.message || 'Failed to submit grade');
                 }
             })
-            .catch(error => console.error('Error:', error));
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while submitting the grade');
+            });
         }
 
         // Modal functions
@@ -979,7 +994,7 @@
         }
 
         function openGradeModal(submissionId, maxPoints) {
-            currentSubmissionId = submissionId;
+            document.getElementById('submissionId').value = submissionId;
             document.getElementById('maxPoints').textContent = maxPoints;
             document.getElementById('grade').max = maxPoints;
             document.getElementById('gradeForm').reset();
