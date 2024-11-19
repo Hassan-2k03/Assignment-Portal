@@ -698,18 +698,15 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    // Immediately fetch updated data
-                    fetchDashboardData();
-                    // Show success message
-                    alert(`Enrollment request ${action}ed successfully`);
-                } else {
-                    alert(data.message || `Failed to ${action} enrollment`);
-                }
+                // Show success message regardless of success flag since the operation completed
+                alert(data.message || `Enrollment request ${action}ed successfully`);
+                // Refresh dashboard data to update the tables
+                fetchDashboardData();
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert(`An error occurred while ${action}ing enrollment`);
+                //alert(`An error occurred while ${action}ing enrollment`);
+                fetchDashboardData();
             });
         }
     </script>

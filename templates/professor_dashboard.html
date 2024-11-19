@@ -830,25 +830,47 @@
         function viewCourseDetails(courseId) {
             currentCourseId = courseId;
             fetch(`/api/courses/${courseId}/details`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    // Update course details modal content
                     document.getElementById('courseDetailsTitle').textContent = data.name;
                     document.getElementById('detailCourseCode').textContent = data.code;
                     document.getElementById('detailSemester').textContent = `Semester ${data.semester} - ${data.year}`;
                     document.getElementById('detailStudents').textContent = data.enrolled_count;
                     document.getElementById('detailAssignments').textContent = data.active_assignments;
                     
-                    displayStudentsList(data.students);
-                    displayAssignmentsList(data.assignments);
+                    // Update students list
+                    updateStudentsList(data.students);
                     
+                    // Update assignments list
+                    updateAssignmentsList(data.assignments);
+                    
+                    // Show the modal
                     openModal('courseDetailsModal');
+                    
+                    // Activate first tab
+                    document.querySelector('.tab-btn[data-tab="overview"]').click();
                 })
-                .catch(error => console.error('Error:', error));
+                .catch(error => {
+                    console.error('Error fetching course details:', error);
+                    alert('Failed to load course details');
+                });
         }
 
-        function displayStudentsList(students) {
+        function updateStudentsList(students) {
             const tbody = document.getElementById('studentsList');
+            if (!students || students.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No students enrolled</td></tr>';
+                return;
+            }
+            
             tbody.innerHTML = students.map(student => {
+                const progress = (student.completed_assignments / student.total_assignments) * 100 || 0;
                 const gradeClass = student.average_grade >= 80 ? 'grade-good' : 
                                  student.average_grade >= 60 ? 'grade-average' : 'grade-poor';
                 
@@ -857,19 +879,24 @@
                         <td>${student.name}</td>
                         <td>
                             <div class="progress-bar">
-                                <div class="progress-fill" style="width: ${student.progress}%"></div>
+                                <div class="progress-fill" style="width: ${progress}%"></div>
                             </div>
-                            <small>${student.progress}%</small>
+                            <small>${progress.toFixed(1)}%</small>
                         </td>
-                        <td>${student.completed_assignments}/${student.total_assignments}</td>
-                        <td><span class="grade-badge ${gradeClass}">${student.average_grade.toFixed(1)}%</span></td>
+                        <td>${student.completed_assignments || 0}/${student.total_assignments || 0}</td>
+                        <td><span class="grade-badge ${gradeClass}">${student.average_grade?.toFixed(1) || 'N/A'}</span></td>
                     </tr>
                 `;
             }).join('');
         }
 
-        function displayAssignmentsList(assignments) {
+        function updateAssignmentsList(assignments) {
             const tbody = document.getElementById('assignmentsList');
+            if (!assignments || assignments.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No assignments created yet</td></tr>';
+                return;
+            }
+            
             tbody.innerHTML = assignments.map(assignment => `
                 <tr>
                     <td>${assignment.title}</td>

@@ -343,6 +343,7 @@ def admin_dashboard():
             FROM EnrollmentRequest er
             JOIN Course c ON er.CourseID = c.CourseID
             JOIN User u ON er.StudentID = u.UserID
+            WHERE er.Status = 'pending'  # Add this condition
             ORDER BY er.RequestDate DESC
         """)
         enrollment_requests = cursor.fetchall()
@@ -456,63 +457,23 @@ def admin_create_course():
 @login_required
 def approve_enrollment(request_id):
     if session.get('role') != 'admin':
-        return jsonify({
-            'success': False,
-            'message': 'Only admins can approve enrollments'
-        }), 403
+        return jsonify({'success': False, 'message': 'Only admins can approve enrollments'}), 403
 
     cursor = mydb.cursor(dictionary=True)
     try:
-        # First get the enrollment request details
-        cursor.execute("""
-            SELECT StudentID, CourseID, Status 
-            FROM EnrollmentRequest 
-            WHERE RequestID = %s
-        """, (request_id,))
+        # Call ProcessEnrollmentRequest procedure
+        args = [request_id, session['user_id'], 'approve', 0, '']  # Last two are OUT parameters
+        result = cursor.callproc('ProcessEnrollmentRequest', args)
         
-        request = cursor.fetchone()
-        if not request:
-            return jsonify({'message': 'Enrollment request not found'}), 404
-            
-        if request['Status'] != 'pending':
-            return jsonify({'message': 'Request has already been processed'}), 400
+        success = result[3]  # Fourth parameter (OUT success)
+        message = result[4]  # Fifth parameter (OUT message)
+        
+        mydb.commit()
+        return jsonify({
+            'success': success,
+            'message': message
+        }), 200 if success else 400
 
-        # Start transaction
-        cursor.execute("START TRANSACTION")
-        try:
-            # Update request status to approved
-            cursor.execute("""
-                UPDATE EnrollmentRequest 
-                SET Status = 'approved', ProcessedDate = NOW() 
-                WHERE RequestID = %s
-            """, (request_id,))
-
-            # Create new enrollment
-            cursor.execute("""
-                INSERT INTO Enrollment (StudentID, CourseID, EnrollmentDate)
-                VALUES (%s, %s, NOW())
-            """, (request['StudentID'], request['CourseID']))
-
-            # Create notification for student
-            cursor.execute("""
-                INSERT INTO Notification (UserID, Message, Timestamp)
-                SELECT %s, 
-                    CONCAT('Your enrollment request for course ', c.CourseName, ' has been approved'),
-                    NOW()
-                FROM Course c
-                WHERE c.CourseID = %s
-            """, (request['StudentID'], request['CourseID']))
-
-            cursor.execute("COMMIT")
-            return jsonify({
-                'success': True,
-                'message': 'Enrollment request approved successfully'
-            }), 200
-            
-        except mysql.connector.Error:
-            cursor.execute("ROLLBACK")
-            raise
-            
     except mysql.connector.Error as err:
         print(f"Error processing enrollment: {err}")
         return jsonify({
@@ -557,28 +518,64 @@ def delete_course(course_id):
 
     cursor = mydb.cursor(dictionary=True)
     try:
+        # Start transaction
+        cursor.execute("START TRANSACTION")
+        
         # Check if course exists
-        cursor.execute("SELECT 1 FROM Course WHERE CourseID = %s", (course_id,))
-        if not cursor.fetchone():
+        cursor.execute("SELECT CourseID, CourseName FROM Course WHERE CourseID = %s", (course_id,))
+        course = cursor.fetchone()
+        
+        if not course:
+            cursor.execute("ROLLBACK")
             return jsonify({
                 'success': False,
                 'message': 'Course not found'
             }), 404
 
-        # Delete course (this will cascade to related records if set up in DB)
+        # Delete enrollments first
+        cursor.execute("DELETE FROM Enrollment WHERE CourseID = %s", (course_id,))
+        
+        # Delete enrollment requests
+        cursor.execute("DELETE FROM EnrollmentRequest WHERE CourseID = %s", (course_id,))
+        
+        # Delete assignments and their submissions
+        cursor.execute("""
+            DELETE s FROM Submission s
+            INNER JOIN Assignment a ON s.AssignmentID = a.AssignmentID
+            WHERE a.CourseID = %s
+        """, (course_id,))
+        
+        cursor.execute("DELETE FROM Assignment WHERE CourseID = %s", (course_id,))
+        
+        # Finally delete the course
         cursor.execute("DELETE FROM Course WHERE CourseID = %s", (course_id,))
-        mydb.commit()
-
+        
+        # Create notification for affected users
+        cursor.execute("""
+            INSERT INTO Notification (UserID, Message, Timestamp)
+            SELECT DISTINCT u.UserID, 
+                   CONCAT('Course "', %s, '" has been deleted'),
+                   NOW()
+            FROM User u
+            WHERE u.UserID IN (
+                SELECT StudentID FROM Enrollment WHERE CourseID = %s
+                UNION
+                SELECT InstructorID FROM Course WHERE CourseID = %s
+            )
+        """, (course['CourseName'], course_id, course_id))
+        
+        cursor.execute("COMMIT")
         return jsonify({
             'success': True,
             'message': 'Course deleted successfully'
         }), 200
 
     except mysql.connector.Error as err:
+        cursor.execute("ROLLBACK")
         print(f"Error deleting course: {err}")
         return jsonify({
             'success': False,
-            'message': 'Failed to delete course'
+            'message': f'Failed to delete course: {str(err)}'
         }), 500
 
 @app.route('/admin/courses/<int:course_id>/edit', methods=['POST'])
@@ -670,64 +667,18 @@ def professor_dashboard():
 
     cursor = mydb.cursor(dictionary=True)
     try:
-        # Get professor stats
-        cursor.execute("""
-            SELECT 
-                (SELECT COUNT(*) FROM Course 
-                 WHERE InstructorID = %s) as active_courses,
-                (SELECT COUNT(DISTINCT e.StudentID) 
-                 FROM Enrollment e 
-                 JOIN Course c ON e.CourseID = c.CourseID 
-                 WHERE c.InstructorID = %s) as total_students,
-                (SELECT COUNT(*) FROM Submission s 
-                 JOIN Assignment a ON s.AssignmentID = a.AssignmentID 
-                 JOIN Course c ON a.CourseID = c.CourseID 
-                 WHERE c.InstructorID = %s AND s.Grade IS NULL) as pending_assignments
-        """, (session['user_id'], session['user_id'], session['user_id']))
+        # Call GetProfessorDashboard procedure
+        cursor.callproc('GetProfessorDashboard', (session['user_id'],))
         
-        stats = cursor.fetchone()
+        # Get results from all result sets
+        results = []
+        for result in cursor.stored_results():
+            results.append(result.fetchall())
         
-        # Get teaching courses with detailed information
-        cursor.execute("""
-            SELECT 
-                c.*,
-                (SELECT COUNT(DISTINCT e.StudentID) 
-                 FROM Enrollment e 
-                 WHERE e.CourseID = c.CourseID) as enrolled_students,
-                (SELECT COUNT(a.AssignmentID) 
-                 FROM Assignment a 
-                 WHERE a.CourseID = c.CourseID) as assignment_count,
-                (SELECT COUNT(*) 
-                 FROM Submission s 
-                 JOIN Assignment a ON s.AssignmentID = a.AssignmentID 
-                 WHERE a.CourseID = c.CourseID AND s.Grade IS NULL) as pending_submissions
-            FROM Course c
-            WHERE c.InstructorID = %s
-            ORDER BY c.Year DESC, c.Semester DESC
-        """, (session['user_id'],))
-        
-        courses = cursor.fetchall()
-        
-        # Add query for recent submissions
-        cursor.execute("""
-            SELECT 
-                CONCAT(u.FirstName, ' ', u.LastName) as student_name,
-                a.Title as assignment_title,
-                c.CourseName as course_name,
-                s.SubmissionDate,
-                s.Grade,
-                s.SubmissionID,
-                a.MaxPoints
-            FROM Submission s
-            JOIN Assignment a ON s.AssignmentID = a.AssignmentID
-            JOIN Course c ON a.CourseID = c.CourseID
-            JOIN User u ON s.StudentID = u.UserID
-            WHERE c.InstructorID = %s
-            ORDER BY s.SubmissionDate DESC
-            LIMIT 10
-        """, (session['user_id'],))
-        
-        submissions = cursor.fetchall()
+        # Map results to their respective data
+        stats = results[0][0]  # First result set contains stats
+        courses = results[1]   # Second result set contains courses
+        submissions = results[2]  # Third result set contains submissions
         
         return jsonify({
             'stats': stats,
@@ -743,7 +694,6 @@ def professor_dashboard():
 @app.route('/submissions/<int:submission_id>/grade', methods=['POST'])
 @login_required
 def grade_submission(submission_id):
-    """Grade and provide feedback on student submissions."""
     if session.get('role') != 'professor':
         return jsonify({'success': False, 'message': 'Only professors can grade submissions'}), 403
 
@@ -756,217 +706,124 @@ def grade_submission(submission_id):
 
     cursor = mydb.cursor(dictionary=True)
     try:
-        # Verify professor teaches this course
-        cursor.execute("""
-            SELECT c.CourseID, a.MaxPoints 
-            FROM Course c
-            JOIN Assignment a ON c.CourseID = a.CourseID
-            JOIN Submission s ON a.AssignmentID = s.AssignmentID
-            WHERE s.SubmissionID = %s AND c.InstructorID = %s
-        """, (submission_id, session['user_id']))
-
-        course_info = cursor.fetchone()
-        if not course_info:
-            return jsonify({'success': False, 'message': 'Not authorized to grade this submission'}), 403
-
-        # Validate grade is within allowed range
-        if grade < 0 or grade > course_info['MaxPoints']:
-            return jsonify({'success': False, 'message': f'Grade must be between 0 and {course_info["MaxPoints"]}'}), 400
-
-        # Update the submission with grade and feedback
-        cursor.execute("""
-            UPDATE Submission 
-            SET Grade = %s, Feedback = %s, GradedDate = NOW()
-            WHERE SubmissionID = %s
-        """, (grade, feedback, submission_id))
+        # Call GradeSubmission procedure
+        args = [submission_id, session['user_id'], grade, feedback, 0, '']  # Last two are OUT parameters
+        result = cursor.callproc('GradeSubmission', args)
+        
+        success = result[4]  # Fifth parameter (OUT success)
+        message = result[5]  # Sixth parameter (OUT message)
         
         mydb.commit()
-
-        # Create notification for student
-        cursor.execute("""
-            INSERT INTO Notification (UserID, Message, Timestamp)
-            SELECT s.StudentID, 
-                   CONCAT('Your submission for assignment "', a.Title, '" has been graded'), 
-                   NOW()
-            FROM Submission s
-            JOIN Assignment a ON s.AssignmentID = a.AssignmentID
-            WHERE s.SubmissionID = %s
-        """, (submission_id,))
-        
-        mydb.commit()
-        return jsonify({'success': True, 'message': 'Submission graded successfully'}), 200
+        return jsonify({
+            'success': success,
+            'message': message
+        }), 200 if success else 400
 
     except mysql.connector.Error as err:
         print(f"Error grading submission: {err}")
         return jsonify({'success': False, 'message': 'Failed to grade submission'}), 500
 
-@app.route('/api/assignments/<int:assignment_id>/delete', methods=['POST'])
-@login_required
-def delete_assignment(assignment_id):
-    """Delete an assignment and its associated files."""
-    if session.get('role') != 'professor':
-        return jsonify({
-            'success': False,
-            'message': 'Only professors can delete assignments'
-        }), 403
-
-    cursor = mydb.cursor(dictionary=True)
-    try:
-        # First verify the professor owns this assignment
-        cursor.execute("""
-            SELECT a.*, c.InstructorID, c.CourseID
-            FROM Assignment a
-            JOIN Course c ON a.CourseID = c.CourseID
-            WHERE a.AssignmentID = %s
-        """, (assignment_id,))
-        
-        assignment = cursor.fetchone()
-        if not assignment:
-            return jsonify({
-                'success': False,
-                'message': 'Assignment not found'
-            }), 404
-            
-        if assignment['InstructorID'] != session['user_id']:
-            return jsonify({
-                'success': False,
-                'message': 'You can only delete your own assignments'
-            }), 403
-
-        # Start transaction
-        cursor.execute("START TRANSACTION")
-        
-        try:
-            # Get all submission files before deleting database records
-            cursor.execute("""
-                SELECT SubmissionPath 
-                FROM Submission 
-                WHERE AssignmentID = %s
-            """, (assignment_id,))
-            
-            submissions = cursor.fetchall()
-
-            # Delete submission files
-            for submission in submissions:
-                if submission['SubmissionPath'] and os.path.exists(submission['SubmissionPath']):
-                    try:
-                        if os.path.isfile(submission['SubmissionPath']):
-                            os.remove(submission['SubmissionPath'])
-                        elif os.path.isdir(submission['SubmissionPath']):
-                            import shutil
-                            shutil.rmtree(submission['SubmissionPath'])
-                    except OSError:
-                        # Continue even if file deletion fails
-                        pass
-
-            # Delete the assignment directory if it exists
-            if assignment['FilePath'] and os.path.exists(assignment['FilePath']):
-                try:
-                    if os.path.isfile(assignment['FilePath']):
-                        os.remove(assignment['FilePath'])
-                    elif os.path.isdir(assignment['FilePath']):
-                        import shutil
-                        shutil.rmtree(assignment['FilePath'])
-                except OSError:
-                    # Continue even if directory deletion fails
-                    pass
-
-            # Delete database records
-            cursor.execute("DELETE FROM Submission WHERE AssignmentID = %s", (assignment_id,))
-            cursor.execute("DELETE FROM Assignment WHERE AssignmentID = %s", (assignment_id,))
-            
-            # Create notifications for enrolled students
-            cursor.execute("""
-                INSERT INTO Notification (UserID, Message, Timestamp)
-                SELECT e.StudentID, 
-                    CONCAT('Assignment "', %s, '" has been deleted from the course'),
-                    NOW()
-                FROM Enrollment e
-                WHERE e.CourseID = %s
-            """, (assignment['Title'], assignment['CourseID']))
-
-            cursor.execute("COMMIT")
-            return jsonify({
-                'success': True,
-                'message': 'Assignment deleted successfully'
-            }), 200
-
-        except Exception as e:
-            cursor.execute("ROLLBACK")
-            print(f"Error during deletion: {str(e)}")
-            raise e
-
-    except mysql.connector.Error as err:
-        print(f"Database error: {err}")
-        return jsonify({
-            'success': False,
-            'message': 'Database error occurred'
-        }), 500
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': 'An error occurred while deleting the assignment'
-        }), 500
-
-# ============ Student Routes ============
 @app.route('/student-dashboard')
 @login_required
 def student_dashboard():
-    """Student dashboard data API endpoint."""
     if session.get('role') != 'student':
         return jsonify({'message': 'Only students can access this route'}), 403
 
     cursor = mydb.cursor(dictionary=True)
     try:
-        # Get enrolled courses and available courses
-        cursor.execute("""
-            SELECT c.*, 
-                   u.FirstName as instructor_name,
-                   CASE WHEN e.StudentID IS NOT NULL THEN TRUE ELSE FALSE END as is_enrolled
-            FROM Course c
-            JOIN User u ON c.InstructorID = u.UserID
-            LEFT JOIN Enrollment e ON c.CourseID = e.CourseID AND e.StudentID = %s
-        """, (session['user_id'],))
-        courses = cursor.fetchall()
-
-        # Get assignments for enrolled courses
-        cursor.execute("""
-            SELECT 
-                a.AssignmentID,
-                a.Title,
-                a.Description,
-                a.DueDate,
-                a.FilePath,
-                c.CourseName,
-                c.CourseCode,
-                COALESCE(s.SubmissionPath, NULL) as submission,
-                COALESCE(s.Grade, NULL) as grade,
-                CASE 
-                    WHEN s.SubmissionPath IS NOT NULL THEN 'submitted'
-                    WHEN a.DueDate < NOW() THEN 'late'
-                    ELSE 'pending'
-                END as status
-            FROM Assignment a
-            JOIN Course c ON a.CourseID = c.CourseID
-            JOIN Enrollment e ON c.CourseID = e.CourseID
-            LEFT JOIN Submission s ON a.AssignmentID = s.AssignmentID 
-                AND s.StudentID = %s
-            WHERE e.StudentID = %s AND e.Status = 'active'
-            ORDER BY a.DueDate ASC
-        """, (session['user_id'], session['user_id']))
-        assignments = cursor.fetchall()
-
+        # Call GetStudentDashboard procedure
+        cursor.callproc('GetStudentDashboard', (session['user_id'],))
+        
+        results = []
+        for result in cursor.stored_results():
+            results.append(result.fetchall())
+        
+        courses = results[0]  # First result set contains all courses
+        assignments = results[1]  # Second result set contains assignments
+        
         return jsonify({
             'enrolled_courses': [c for c in courses if c['is_enrolled']],
             'available_courses': [c for c in courses if not c['is_enrolled']],
             'upcoming_assignments': assignments,
-            'student_name': session.get('username'),
+            'student_name': session.get('username')
         }), 200
     except mysql.connector.Error as err:
         print(f"Error fetching dashboard data: {err}")
         return jsonify({'message': 'Error fetching dashboard data'}), 500
 
+@app.route('/api/courses/<int:course_id>/details')
+@login_required
+def get_course_full_details(course_id):
+    if session.get('role') != 'professor':
+        return jsonify({'message': 'Unauthorized access'}), 403
+
+    cursor = mydb.cursor(dictionary=True)
+    try:
+        # Get basic course info
+        cursor.execute("""
+            SELECT c.*, 
+                   COUNT(DISTINCT e.StudentID) as enrolled_count,
+                   COUNT(DISTINCT CASE WHEN a.DueDate > NOW() THEN a.AssignmentID END) as active_assignments
+            FROM Course c
+            LEFT JOIN Enrollment e ON c.CourseID = c.CourseID
+            LEFT JOIN Assignment a ON c.CourseID = a.CourseID
+            WHERE c.CourseID = %s AND c.InstructorID = %s
+            GROUP BY c.CourseID
+        """, (course_id, session['user_id']))
+        
+        course = cursor.fetchone()
+        if not course:
+            return jsonify({'message': 'Course not found or unauthorized'}), 404
+
+        # Get enrolled students with their progress
+        cursor.execute("""
+            SELECT 
+                u.UserID,
+                CONCAT(u.FirstName, ' ', u.LastName) as name,
+                COUNT(DISTINCT s.SubmissionID) as completed_assignments,
+                COUNT(DISTINCT a.AssignmentID) as total_assignments,
+                AVG(CASE WHEN s.Grade IS NOT NULL THEN s.Grade ELSE NULL END) as average_grade
+            FROM User u
+            JOIN Enrollment e ON u.UserID = e.StudentID
+            LEFT JOIN Submission s ON u.UserID = s.StudentID
+            LEFT JOIN Assignment a ON s.AssignmentID = a.AssignmentID
+            WHERE e.CourseID = %s AND e.Status = 'active'
+            GROUP BY u.UserID, u.FirstName, u.LastName
+        """, (course_id,))
+        
+        students = cursor.fetchall()
+
+        # Get course assignments
+        cursor.execute("""
+            SELECT 
+                AssignmentID as id,
+                Title as title,
+                DueDate as due_date,
+                (SELECT COUNT(*) FROM Submission s WHERE s.AssignmentID = a.AssignmentID) as submission_count,
+                (SELECT COUNT(*) FROM Enrollment e WHERE e.CourseID = a.CourseID) as total_students
+            FROM Assignment a
+            WHERE CourseID = %s
+            ORDER BY DueDate DESC
+        """, (course_id,))
+        
+        assignments = cursor.fetchall()
+
+        return jsonify({
+            'name': course['CourseName'],
+            'code': course['CourseCode'],
+            'semester': course['Semester'],
+            'year': course['Year'],
+            'enrolled_count': course['enrolled_count'] or 0,
+            'active_assignments': course['active_assignments'] or 0,
+            'students': students,
+            'assignments': assignments
+        }), 200
+
+    except mysql.connector.Error as err:
+        print(f"Error fetching course details: {err}")
+        return jsonify({'message': 'Failed to fetch course details'}), 500
+
+# ============ Student Routes ============
 @app.route('/assignments/<int:assignment_id>/submit', methods=['POST'])
 @login_required
 def submit_assignment(assignment_id):
@@ -1321,103 +1178,48 @@ def exit_course(course_id):
             'message': 'Failed to exit course'
         }), 500
 
-@app.route('/api/courses/<int:course_id>/details')
+@app.route('/admin/enrollment/<action>/<int:request_id>', methods=['POST'])
 @login_required
-def get_course_full_details(course_id):
-    """Get comprehensive course details including students and assignments."""
-    if session.get('role') != 'professor':
-        return jsonify({'message': 'Unauthorized access'}), 403
+def handle_enrollment(action, request_id):
+    if session.get('role') != 'admin':
+        return jsonify({'success': False, 'message': 'Only admins can process enrollments'}), 403
 
-    cursor = mydb.cursor(dictionary=True)
+    cursor = mydb.cursor()
     try:
-        # Get basic course info
-        cursor.execute("""
-            SELECT c.*, 
-                   (SELECT COUNT(DISTINCT e.StudentID) 
-                    FROM Enrollment e 
-                    WHERE e.CourseID = c.CourseID) as enrolled_count,
-                   (SELECT COUNT(*) 
-                    FROM Assignment a 
-                    WHERE a.CourseID = c.CourseID 
-                    AND a.DueDate > NOW()) as active_assignments
-            FROM Course c
-            WHERE c.CourseID = %s AND c.InstructorID = %s
-        """, (course_id, session['user_id']))
+        # Initialize OUT parameters
+        cursor.execute("SET @success = 0")
+        cursor.execute("SET @message = ''")
         
-        course = cursor.fetchone()
-        if not course:
-            return jsonify({'message': 'Course not found or unauthorized'}), 404
-
-        # Update the enrolled students query to fix progress tracking
-        cursor.execute("""
-            SELECT 
-                u.UserID,
-                CONCAT(u.FirstName, ' ', u.LastName) as name,
-                u.Email,
-                (
-                    SELECT COUNT(DISTINCT s.SubmissionID)
-                    FROM Submission s
-                    JOIN Assignment a ON s.AssignmentID = a.AssignmentID
-                    WHERE s.StudentID = u.UserID 
-                    AND a.CourseID = %s
-                ) as completed_assignments,
-                (
-                    SELECT COUNT(*)
-                    FROM Assignment
-                    WHERE CourseID = %s
-                ) as total_assignments,
-                (
-                    SELECT AVG(CAST(s.Grade AS DECIMAL(5,2)))
-                    FROM Submission s
-                    JOIN Assignment a ON s.AssignmentID = a.AssignmentID
-                    WHERE s.StudentID = u.UserID 
-                    AND a.CourseID = %s
-                    AND s.Grade IS NOT NULL
-                ) as average_grade
-            FROM User u
-            JOIN Enrollment e ON u.UserID = e.StudentID
-            WHERE e.CourseID = %s AND e.Status = 'active'
-            GROUP BY u.UserID, u.FirstName, u.LastName, u.Email
-        """, (course_id, course_id, course_id, course_id))
+        # Call the stored procedure with OUT parameters
+        cursor.execute(f"""
+            CALL ProcessEnrollmentRequest(
+                {request_id}, 
+                {session['user_id']}, 
+                '{action}', 
+                @success, 
+                @message
+            )
+        """)
         
-        students = cursor.fetchall()
+        # Get the OUT parameter values
+        cursor.execute("SELECT @success, @message")
+        success, message = cursor.fetchone()
         
-        # Process the students data to handle NULL values
-        for student in students:
-            student['average_grade'] = float(student['average_grade']) if student['average_grade'] else 0
-            student['completed_assignments'] = int(student['completed_assignments']) if student['completed_assignments'] else 0
-            student['total_assignments'] = int(student['total_assignments'])
-            student['progress'] = round((student['completed_assignments'] / student['total_assignments'] * 100) if student['total_assignments'] > 0 else 0, 1)
-
-        # Get course assignments
-        cursor.execute("""
-            SELECT 
-                a.AssignmentID as id,
-                a.Title as title,
-                a.DueDate as due_date,
-                COUNT(DISTINCT s.StudentID) as submission_count,
-                (SELECT COUNT(*) FROM Enrollment WHERE CourseID = %s) as total_students
-            FROM Assignment a
-            LEFT JOIN Submission s ON a.AssignmentID = s.AssignmentID
-            WHERE a.CourseID = %s
-            GROUP BY a.AssignmentID
-        """, (course_id, course_id))
-        assignments = cursor.fetchall()
-
+        mydb.commit()
+        
         return jsonify({
-            'name': course['CourseName'],
-            'code': course['CourseCode'],
-            'semester': course['Semester'],
-            'year': course['Year'],
-            'enrolled_count': course['enrolled_count'],
-            'active_assignments': course['active_assignments'],
-            'students': students,
-            'assignments': assignments
+            'success': bool(success),
+            'message': message or f'Enrollment request {action}ed successfully'
         }), 200
 
     except mysql.connector.Error as err:
-        print(f"Error fetching course details: {err}")
-        return jsonify({'message': 'Failed to fetch course details'}), 500
+        print(f"Error processing enrollment: {err}")
+        return jsonify({
+            'success': False,
+            'message': f'Database error: {str(err)}'
+        }), 500
+    finally:
+        cursor.close()
 
 if __name__ == '__main__':
     app.run(debug=True)

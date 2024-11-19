@@ -33,6 +33,11 @@ CREATE TABLE Course (
     FOREIGN KEY (InstructorID) REFERENCES User(UserID)
 );
 
+-- Update Course table to enable cascading deletes
+ALTER TABLE Course
+ADD CONSTRAINT course_instructor_fk
+FOREIGN KEY (InstructorID) REFERENCES User(UserID) ON DELETE SET NULL;
+
 -- Assignment table
 CREATE TABLE `assignment` (
   `AssignmentID` int NOT NULL AUTO_INCREMENT,
@@ -52,6 +57,10 @@ CREATE TABLE `assignment` (
   CONSTRAINT `assignment_ibfk_2` FOREIGN KEY (`CreatedBy`) REFERENCES `user` (`UserID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 
+-- Update related tables to cascade on course deletion
+ALTER TABLE Assignment
+ADD CONSTRAINT assignment_course_fk
+FOREIGN KEY (CourseID) REFERENCES Course(CourseID) ON DELETE CASCADE;
 
 -- Defines relationship table (between User and Assignment)
 CREATE TABLE Defines (
@@ -143,6 +152,11 @@ CREATE TABLE Enrollment (
     UNIQUE KEY unique_enrollment (StudentID, CourseID)
 );
 
+-- Update related tables to cascade on course deletion
+ALTER TABLE Enrollment
+ADD CONSTRAINT enrollment_course_fk
+FOREIGN KEY (CourseID) REFERENCES Course(CourseID) ON DELETE CASCADE;
+
 CREATE TABLE EnrollmentRequest (
     RequestID INT AUTO_INCREMENT PRIMARY KEY,
     StudentID INT NOT NULL,
@@ -154,3 +168,8 @@ CREATE TABLE EnrollmentRequest (
     FOREIGN KEY (CourseID) REFERENCES Course(CourseID),
     UNIQUE KEY unique_request (StudentID, CourseID, Status)
 );
+
+-- Update related tables to cascade on course deletion
+ALTER TABLE EnrollmentRequest
+ADD CONSTRAINT enrollment_request_course_fk
+FOREIGN KEY (CourseID) REFERENCES Course(CourseID) ON DELETE CASCADE;
