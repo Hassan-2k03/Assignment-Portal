@@ -464,7 +464,7 @@
                             <th>Course</th>
                             <th>Submission Date</th>
                             <th>Status</th>
-                            <th>Actions</th>
+                            <th>Grade</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -559,7 +559,6 @@
                         <thead>
                             <tr>
                                 <th>Student Name</th>
-                                <th>Email</th>
                                 <th>Progress</th>
                                 <th>Completed</th>
                                 <th>Average Grade</th>
@@ -840,7 +839,6 @@
                 return `
                     <tr>
                         <td>${student.name}</td>
-                        <td>${student.email}</td>
                         <td>
                             <div class="progress-bar">
                                 <div class="progress-fill" style="width: ${student.progress}%"></div>
