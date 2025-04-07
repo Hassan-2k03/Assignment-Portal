@@ -11,6 +11,9 @@ This script creates the database schema for the assignment portal with the follo
 All tables include appropriate foreign key constraints and indexes for optimization.
 */
 
+
+
+
 -- User table
 CREATE TABLE User (
     UserID INT AUTO_INCREMENT PRIMARY KEY,
